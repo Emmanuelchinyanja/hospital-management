@@ -1,6 +1,7 @@
 from tkinter import *
 from PIL import ImageTk, Image
-
+import mysql.connector
+from tkinter import messagebox
 
 class LoginPage:
     def __init__(self, window):
@@ -9,6 +10,33 @@ class LoginPage:
         self.window.resizable(0, 0)
         self.window.state('zoomed')
         self.window.title('Login Page')
+
+    def check_login(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        if not username or not password:
+            messagebox.showerror("Error", "Please enter both username and password.")
+            return
+
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",          
+                password="",          
+                database="hospital-management" 
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                messagebox.showinfo("Success", f"Welcome, {username}!")
+                # You can open your main system window here
+            else:
+                messagebox.showerror("Error", "Invalid username or password.")
+        except mysql.connector.Error as err:
+            messagebox.showerror("Database Error", f"Error: {err}")
 
         # ========================================================================
         # ============================background image============================
