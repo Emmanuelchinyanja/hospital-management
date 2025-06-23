@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 16, 2025 at 09:28 AM
+-- Generation Time: May 17, 2025 at 09:48 PM
 -- Server version: 10.4.27-MariaDB
 -- PHP Version: 8.2.0
 
@@ -44,6 +44,7 @@ CREATE TABLE `patients` (
 CREATE TABLE `treatments` (
   `treatment_id` int(11) NOT NULL,
   `patient_id` varchar(50) DEFAULT NULL,
+  `doctor` varchar(100) DEFAULT NULL,
   `details` text DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -55,12 +56,22 @@ CREATE TABLE `treatments` (
 --
 
 CREATE TABLE `users` (
-  `log_id` int(11) NOT NULL,
-  `username` varchar(255) NOT NULL,
+  `id` int(11) NOT NULL,
+  `username` varchar(50) NOT NULL,
   `password` varchar(255) NOT NULL,
-  `action` varchar(255) NOT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `role` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`id`, `username`, `password`, `timestamp`, `role`) VALUES
+(1, 'reception', '1234', '2025-05-17 19:30:14', 'Receptionist'),
+(2, 'nurse', '1234', '2025-05-17 19:30:14', 'Nurse'),
+(3, 'doctor', '1234', '2025-05-17 19:30:14', 'Doctor'),
+(4, 'admin', '1234', '2025-05-17 19:30:14', 'Admin');
 
 --
 -- Indexes for dumped tables
@@ -83,7 +94,7 @@ ALTER TABLE `treatments`
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
-  ADD PRIMARY KEY (`log_id`);
+  ADD PRIMARY KEY (`id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -99,7 +110,7 @@ ALTER TABLE `treatments`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Constraints for dumped tables

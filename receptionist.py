@@ -1,6 +1,6 @@
 import customtkinter
 from tkinter import messagebox
-from db_connection import get_connection  # <-- Import here
+import mysql.connector
 
 class App(customtkinter.CTk):
     def __init__(self, username="User", role="User"):
@@ -10,8 +10,13 @@ class App(customtkinter.CTk):
         self.username = username
         self.role = role
 
-        # Connect to MySQL using the connection file
-        self.conn = get_connection()
+        # Connect to MySQL
+        self.conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            database="hospital-management"
+        )
         self.cursor = self.conn.cursor()
 
         # Layout
@@ -32,7 +37,6 @@ class App(customtkinter.CTk):
         elif self.role == "Doctor":
             self.add_nav_button("Consult Patient", self.show_consult_patient, 0)
             self.add_nav_button("Set Disposition", self.show_set_disposition, 1)
-            self.add_nav_button("Today's Patients", self.show_todays_patients, 2)  # <-- Add this line
         elif self.role == "Admin":
             self.add_nav_button("View Audit", self.show_view_audit, 0)
 
@@ -65,6 +69,8 @@ class App(customtkinter.CTk):
         self.clear_content()
         label = customtkinter.CTkLabel(self.current_content, text="Register Patient", font=("Arial", 18))
         label.pack(pady=10)
+        pid_entry = customtkinter.CTkEntry(self.current_content, placeholder_text="Patient ID")
+        pid_entry.pack(pady=5)
         name_entry = customtkinter.CTkEntry(self.current_content, placeholder_text="Name")
         name_entry.pack(pady=5)
         age_entry = customtkinter.CTkEntry(self.current_content, placeholder_text="Age")
@@ -73,10 +79,11 @@ class App(customtkinter.CTk):
         gender_entry.pack(pady=5)
 
         def submit():
+            pid = pid_entry.get().strip()
             name = name_entry.get().strip()
             age = age_entry.get().strip()
             gender = gender_entry.get().strip().lower()
-            if not (name and age and gender):
+            if not (pid and name and age and gender):
                 messagebox.showerror("Error", "All fields are required.")
                 return
             if gender not in ("male", "female"):
@@ -89,20 +96,21 @@ class App(customtkinter.CTk):
                 return
             try:
                 self.cursor.execute(
-                    "INSERT INTO patients (name, age, gender) VALUES (%s, %s, %s)",
-                    (name, age, gender)
+                    "INSERT INTO patients (patient_id, name, age, gender) VALUES (%s, %s, %s, %s)",
+                    (pid, name, age, gender)
                 )
                 self.conn.commit()
-                # Get the new patient_id
-                self.cursor.execute("SELECT LAST_INSERT_ID()")
-                new_id = self.cursor.fetchone()[0]
-                messagebox.showinfo("Success", f"Patient {name} registered with ID: {new_id}")
+                messagebox.showinfo("Success", f"Patient {name} registered.")
                 # Optionally clear fields after success
+                pid_entry.delete(0, 'end')
                 name_entry.delete(0, 'end')
                 age_entry.delete(0, 'end')
                 gender_entry.delete(0, 'end')
             except mysql.connector.Error as err:
-                messagebox.showerror("Database Error", f"Error: {err}")
+                if err.errno == 1062:
+                    messagebox.showerror("Error", "Patient ID already exists.")
+                else:
+                    messagebox.showerror("Database Error", f"Error: {err}")
 
         submit_btn = customtkinter.CTkButton(self.current_content, text="Register", command=submit)
         submit_btn.pack(pady=10)
@@ -113,7 +121,7 @@ class App(customtkinter.CTk):
         label = customtkinter.CTkLabel(self.current_content, text="Patients List", font=("Arial", 18))
         label.pack(pady=10)
         try:
-            self.cursor.execute("SELECT patient_id, name, age, gender FROM patients")
+            self.cursor.execute("SELECT patient_id, name, age, gender, date_registered FROM patients")
             patients = self.cursor.fetchall()
             if not patients:
                 customtkinter.CTkLabel(self.current_content, text="No patient records found.").pack()
@@ -121,7 +129,7 @@ class App(customtkinter.CTk):
                 for p in patients:
                     customtkinter.CTkLabel(
                         self.current_content,
-                        text=f"ID: {p[0]}, Name: {p[1]}, Age: {p[2]}, Gender: {p[3]}"
+                        text=f"ID: {p[0]}, Name: {p[1]}, Age: {p[2]}, Gender: {p[3]}, Registered: {p[4]}"
                     ).pack(anchor="w", padx=20)
         except mysql.connector.Error as err:
             messagebox.showerror("Database Error", f"Error: {err}")
@@ -260,37 +268,6 @@ class App(customtkinter.CTk):
         self.conn.close()
         self.destroy()
 
-    # Doctor: Today's Patients
-    def show_todays_patients(self):
-        import datetime
-        self.clear_content()
-        label = customtkinter.CTkLabel(self.current_content, text="Today's Treated Patients", font=("Arial", 18))
-        label.pack(pady=10)
-        today = datetime.date.today()
-        try:
-            self.cursor.execute(
-                "SELECT DISTINCT patient_id FROM treatments WHERE doctor=%s AND DATE(created_at)=%s",
-                (self.username, today)
-            )
-            patients = self.cursor.fetchall()
-            count = len(patients)
-            customtkinter.CTkLabel(self.current_content, text=f"Total patients treated today: {count}", font=("Arial", 14)).pack(pady=5)
-            if not patients:
-                customtkinter.CTkLabel(self.current_content, text="No patients treated today.").pack()
-            else:
-                for p in patients:
-                    # Get patient name
-                    self.cursor.execute("SELECT name FROM patients WHERE patient_id=%s", (p[0],))
-                    patient_name = self.cursor.fetchone()
-                    name_str = patient_name[0] if patient_name else "Unknown"
-                    customtkinter.CTkLabel(
-                        self.current_content,
-                        text=f"Patient ID: {p[0]}, Name: {name_str}"
-                    ).pack(anchor="w", padx=20)
-        except mysql.connector.Error as err:
-            messagebox.showerror("Database Error", f"Error: {err}")
-
 if __name__ == "__main__":
-    # Example: App("reception", "Receptionist")
-    app = App("reception", "Receptionist")
+    app = App("receptionist", "Receptionist")
     app.mainloop()
