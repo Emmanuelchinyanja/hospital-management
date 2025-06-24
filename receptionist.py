@@ -43,37 +43,39 @@ class ReceptionistFrame(customtkinter.CTkFrame):
         customtkinter.CTkLabel(self.content, text="Register Patient", font=("Arial", 18, "bold")).pack(pady=10)
         name_entry = customtkinter.CTkEntry(self.content, placeholder_text="Name")
         name_entry.pack(pady=5)
-        age_entry = customtkinter.CTkEntry(self.content, placeholder_text="Age")
-        age_entry.pack(pady=5)
+        dob_entry = customtkinter.CTkEntry(self.content, placeholder_text="Date of Birth (YYYY-MM-DD)")
+        dob_entry.pack(pady=5)
         gender_entry = customtkinter.CTkEntry(self.content, placeholder_text="Gender (male/female)")
         gender_entry.pack(pady=5)
 
         def submit():
             name = name_entry.get().strip()
-            age = age_entry.get().strip()
+            dob = dob_entry.get().strip()
             gender = gender_entry.get().strip().lower()
-            if not (name and age and gender):
+            if not (name and dob and gender):
                 messagebox.showerror("Error", "All fields are required.")
                 return
             if gender not in ("male", "female"):
                 messagebox.showerror("Error", "Gender must be 'male' or 'female'.")
                 return
+            # Validate date format
             try:
-                age = int(age)
+                import datetime
+                datetime.datetime.strptime(dob, "%Y-%m-%d")
             except ValueError:
-                messagebox.showerror("Error", "Age must be a number.")
+                messagebox.showerror("Error", "Date of Birth must be in YYYY-MM-DD format.")
                 return
             try:
                 self.cursor.execute(
-                    "INSERT INTO patients (name, age, gender) VALUES (%s, %s, %s)",
-                    (name, age, gender)
+                    "INSERT INTO patients (name, date_of_birth, gender) VALUES (%s, %s, %s)",
+                    (name, dob, gender)
                 )
                 self.conn.commit()
                 self.cursor.execute("SELECT LAST_INSERT_ID()")
                 new_id = self.cursor.fetchone()[0]
                 messagebox.showinfo("Success", f"Patient {name} registered with ID: {new_id}")
                 name_entry.delete(0, 'end')
-                age_entry.delete(0, 'end')
+                dob_entry.delete(0, 'end')
                 gender_entry.delete(0, 'end')
             except Exception as err:
                 messagebox.showerror("Database Error", f"Error: {err}")
@@ -84,7 +86,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text="Patients List", font=("Arial", 18, "bold")).pack(pady=10)
         try:
-            self.cursor.execute("SELECT patient_id, name, age, gender, date_registered FROM patients")
+            self.cursor.execute("SELECT patient_id, name, date_of_birth, gender, date_registered FROM patients")
             patients = self.cursor.fetchall()
             if not patients:
                 customtkinter.CTkLabel(self.content, text="No patient records found.").pack()
@@ -92,7 +94,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
                 for p in patients:
                     customtkinter.CTkLabel(
                         self.content,
-                        text=f"ID: {p[0]}, Name: {p[1]}, Age: {p[2]}, Gender: {p[3]}, Registered: {p[4]}"
+                        text=f"ID: {p[0]}, Name: {p[1]}, DOB: {p[2]}, Gender: {p[3]}, Registered: {p[4]}"
                     ).pack(anchor="w", padx=20)
         except Exception as err:
             messagebox.showerror("Database Error", f"Error: {err}")
