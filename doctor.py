@@ -1,6 +1,7 @@
 import customtkinter
 from tkinter import messagebox
 from db_connection import get_connection
+from db_connection import get_connection, log_action
 import datetime
 
 class DoctorFrame(customtkinter.CTkFrame):
@@ -10,29 +11,78 @@ class DoctorFrame(customtkinter.CTkFrame):
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
 
-        # Layout: Sidebar and Main Content
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        # Sidebar
         self.sidebar = customtkinter.CTkFrame(self, width=180, fg_color="#2e3f4f")
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False)
 
-        customtkinter.CTkLabel(self.sidebar, text="Doctor", font=("Arial", 18, "bold"), fg_color="#2e3f4f", text_color="white").pack(pady=(30, 20))
+        customtkinter.CTkLabel(self.sidebar, text="Doctor", font=("Arial", 18, "bold"),
+                               fg_color="#2e3f4f", text_color="white").pack(pady=(30, 20))
         customtkinter.CTkButton(self.sidebar, text="Dashboard Home", command=self.show_welcome).pack(fill="x", padx=20, pady=5)
         customtkinter.CTkButton(self.sidebar, text="View Patients", command=self.show_patients).pack(fill="x", padx=20, pady=5)
         customtkinter.CTkButton(self.sidebar, text="Today's Patients", command=self.show_todays_patients).pack(fill="x", padx=20, pady=5)
         customtkinter.CTkButton(self.sidebar, text="Logout", command=self.logout).pack(side="bottom", fill="x", padx=20, pady=20)
 
-        # Main content area
         self.content = customtkinter.CTkFrame(self, fg_color="white")
         self.content.grid(row=0, column=1, sticky="nsew")
-        self.show_welcome()
+
+        # Check if doctor exists, else show registration form
+        self.check_and_register_doctor()
 
     def clear_content(self):
         for widget in self.content.winfo_children():
             widget.destroy()
+
+    def check_and_register_doctor(self):
+        self.cursor.execute("SELECT id FROM doctors WHERE firstname=%s", (self.username,))
+        doctor_row = self.cursor.fetchone()
+        if not doctor_row:
+            self.show_register_doctor()
+        else:
+            self.doctor_id = doctor_row[0]
+            self.show_welcome()
+
+    def show_register_doctor(self):
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="Register Doctor Profile", font=("Arial", 20, "bold")).pack(pady=20)
+        fname_entry = customtkinter.CTkEntry(self.content, placeholder_text="First Name")
+        fname_entry.pack(pady=5)
+        lname_entry = customtkinter.CTkEntry(self.content, placeholder_text="Last Name")
+        lname_entry.pack(pady=5)
+        natid_entry = customtkinter.CTkEntry(self.content, placeholder_text="National ID")
+        natid_entry.pack(pady=5)
+        qual_entry = customtkinter.CTkEntry(self.content, placeholder_text="Qualification")
+        qual_entry.pack(pady=5)
+        spec_combo = customtkinter.CTkComboBox(self.content, values=[
+            'Surgeon', 'Optician', 'Psychian', 'Neurologuist', 'Medicine', 'Hematologist'
+        ])
+        spec_combo.pack(pady=5)
+        spec_combo.set('Medicine')
+
+        def register():
+            fname = fname_entry.get().strip()
+            lname = lname_entry.get().strip()
+            natid = natid_entry.get().strip()
+            qual = qual_entry.get().strip()
+            spec = spec_combo.get().strip()
+            if not (fname and lname and natid and qual and spec):
+                messagebox.showerror("Error", "All fields are required.")
+                return
+            try:
+                self.cursor.execute(
+                    "INSERT INTO doctors (firstname, lastname, national_id, qualification, specialization) VALUES (%s, %s, %s, %s, %s)",
+                    (fname, lname, natid, qual, spec)
+                )
+                self.conn.commit()
+                messagebox.showinfo("Success", "Doctor registered successfully!")
+                self.username = fname  # Update username to match registration
+                self.check_and_register_doctor()
+            except Exception as err:
+                messagebox.showerror("Database Error", f"Error: {err}")
+
+        customtkinter.CTkButton(self.content, text="Register", command=register).pack(pady=15)
 
     def show_welcome(self):
         self.clear_content()
@@ -112,6 +162,7 @@ class DoctorFrame(customtkinter.CTkFrame):
                         messagebox.showinfo("Success", "Symptoms and treatment saved.")
                         symptoms_entry.delete(0, 'end')
                         treatment_entry.delete(0, 'end')
+                        log_action(self.username, "Doctor", f"Updated symptoms/treatment for patient ID: {pid}")
                     except Exception as err:
                         messagebox.showerror("Database Error", f"Error: {err}")
 

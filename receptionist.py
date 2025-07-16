@@ -1,6 +1,6 @@
 import customtkinter
 from tkinter import messagebox
-from db_connection import get_connection
+from db_connection import get_connection, log_action
 
 class ReceptionistFrame(customtkinter.CTkFrame):
     def __init__(self, master, username):
@@ -74,6 +74,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
                 self.cursor.execute("SELECT LAST_INSERT_ID()")
                 new_id = self.cursor.fetchone()[0]
                 messagebox.showinfo("Success", f"Patient {name} registered with ID: {new_id}")
+                log_action(self.username, "Receptionist", f"Registered patient: {name}")
                 name_entry.delete(0, 'end')
                 dob_entry.delete(0, 'end')
                 gender_entry.delete(0, 'end')

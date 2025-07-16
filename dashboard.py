@@ -25,6 +25,12 @@ class Dashboard(customtkinter.CTk):
             self.module_frame = customtkinter.CTkLabel(self, text="Unknown role")
         self.module_frame.pack(fill="both", expand=True)
 
+    def logout(self):
+        self.conn.close()
+        self.destroy()
+        if hasattr(self, 'on_logout') and callable(self.on_logout):
+            self.on_logout()
+
 if __name__ == "__main__":
     app = Dashboard("doctor1", "Doctor")
     app.mainloop()

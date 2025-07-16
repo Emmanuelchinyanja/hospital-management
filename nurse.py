@@ -2,6 +2,7 @@ import customtkinter
 from tkinter import messagebox
 from db_connection import get_connection
 import datetime
+from db_connection import get_connection, log_action
 
 class NurseFrame(customtkinter.CTkFrame):
     def __init__(self, master, username):
@@ -95,6 +96,8 @@ class NurseFrame(customtkinter.CTkFrame):
                 bp_entry.delete(0, 'end')
                 temp_entry.delete(0, 'end')
                 weight_entry.delete(0, 'end')
+                # Log the action
+                log_action(self.username, "Nurse", f"Recorded vitals for patient ID: {pid}")
             except Exception as err:
                 messagebox.showerror("Database Error", f"Error: {err}")
 
