@@ -168,6 +168,57 @@ class DoctorFrame(customtkinter.CTkFrame):
 
                 customtkinter.CTkButton(details_frame, text="Save", command=save_treatment).pack(pady=5)
 
+                # Show patient history
+                self.show_patient_history(pid, details_frame)
+                # Add symptoms and treatment form for the latest record
+                self.cursor.execute(
+                    "SELECT treatment_id FROM treatments WHERE patient_id=%s ORDER BY date DESC LIMIT 1",
+                    (pid,)
+                )
+                vitals = self.cursor.fetchone()
+                if not vitals:
+                    customtkinter.CTkLabel(details_frame, text="No vitals recorded yet.", font=("Arial", 13, "italic")).pack(anchor="w", pady=2)
+                    return  # Don't allow adding symptoms/treatment if no vitals
+
+                # Add symptoms and treatment form
+                customtkinter.CTkLabel(details_frame, text="Add/Update Symptoms and Treatment", font=("Arial", 14, "bold")).pack(pady=(10, 2))
+                symptoms_entry = customtkinter.CTkEntry(details_frame, placeholder_text="Symptoms")
+                symptoms_entry.pack(pady=2, fill="x")
+                treatment_entry = customtkinter.CTkEntry(details_frame, placeholder_text="Treatment")
+                treatment_entry.pack(pady=2, fill="x")
+
+                def save_treatment():
+                    symptoms = symptoms_entry.get().strip()
+                    treatment = treatment_entry.get().strip()
+                    if not (symptoms and treatment):
+                        messagebox.showerror("Error", "Please enter both symptoms and treatment.")
+                        return
+                    try:
+                        # Get doctor_id from doctors table
+                        self.cursor.execute("SELECT id FROM doctors WHERE firstname=%s", (self.username,))
+                        doctor_row = self.cursor.fetchone()
+                        if not doctor_row:
+                            messagebox.showerror("Error", "Doctor not found in database. Please contact admin.")
+                            return
+                        doctor_id = doctor_row[0]
+                        # Update the latest treatment row for this patient
+                        self.cursor.execute(
+                            "UPDATE treatments SET doctor_id=%s, symptoms=%s, treatment=%s WHERE treatment_id=%s",
+                            (doctor_id, symptoms, treatment, vitals[0])
+                        )
+                        self.conn.commit()
+                        messagebox.showinfo("Success", "Symptoms and treatment saved.")
+                        symptoms_entry.delete(0, 'end')
+                        treatment_entry.delete(0, 'end')
+                        log_action(self.username, "Doctor", f"Updated symptoms/treatment for patient ID: {pid}")
+                    except Exception as err:
+                        messagebox.showerror("Database Error", f"Error: {err}")
+
+                customtkinter.CTkButton(details_frame, text="Save", command=save_treatment).pack(pady=5)
+
+                # Show patient history
+                self.show_patient_history(pid, details_frame)
+
             patient_listbox.bind("<<ComboboxSelected>>", on_select)
             # Optionally, show first patient by default
             if patients:
@@ -206,6 +257,54 @@ class DoctorFrame(customtkinter.CTkFrame):
         except Exception as err:
             messagebox.showerror("Database Error", f"Error: {err}")
 
+    def check_emergencies(self):
+        # Show emergency notes for all patients
+        self.cursor.execute("""
+            SELECT n.patient_id, p.name, n.note, n.date
+            FROM patient_notes n
+            JOIN patients p ON n.patient_id = p.patient_id
+            WHERE n.emergency=1
+            ORDER BY n.date DESC
+        """)
+        emergencies = self.cursor.fetchall()
+        if emergencies:
+            msg = "EMERGENCY ALERT!\n\n"
+            for e in emergencies:
+                msg += f"Patient: {e[1]} (ID: {e[0]})\nNote: {e[2]}\nDate: {e[3]}\n\n"
+            messagebox.showwarning("Emergency Alert", msg)
+
     def logout(self):
         self.conn.close()
         self.master.destroy()
+
+    def show_patient_history(self, pid, parent_frame):
+        # Show all previous vitals, symptoms, treatments, and emergency notes
+        customtkinter.CTkLabel(parent_frame, text="Patient History", font=("Arial", 13, "bold")).pack(anchor="w", pady=(8, 2))
+        self.cursor.execute(
+            "SELECT date, blood_pressure, temperature, weight, symptoms, treatment FROM treatments WHERE patient_id=%s ORDER BY date DESC",
+            (pid,)
+        )
+        records = self.cursor.fetchall()
+        if not records:
+            customtkinter.CTkLabel(parent_frame, text="No previous records.", font=("Arial", 12, "italic")).pack(anchor="w")
+        else:
+            for rec in records:
+                customtkinter.CTkLabel(
+                    parent_frame,
+                    text=f"Date: {rec[0]} | BP: {rec[1]}, Temp: {rec[2]}°C, Weight: {rec[3]}kg | Symptoms: {rec[4] or 'N/A'} | Treatment: {rec[5] or 'N/A'}",
+                    font=("Arial", 12)
+                ).pack(anchor="w", padx=10, pady=1)
+        # Show emergency notes for this patient
+        self.cursor.execute(
+            "SELECT note, author, date FROM patient_notes WHERE patient_id=%s AND emergency=1 ORDER BY date DESC",
+            (pid,)
+        )
+        notes = self.cursor.fetchall()
+        if notes:
+            customtkinter.CTkLabel(parent_frame, text="Emergency Notes:", font=("Arial", 12, "bold"), text_color="red").pack(anchor="w", pady=(8, 2))
+            for n in notes:
+                customtkinter.CTkLabel(
+                    parent_frame,
+                    text=f"{n[2]} by {n[1]}: {n[0]}",
+                    font=("Arial", 12), text_color="red"
+                ).pack(anchor="w", padx=20)

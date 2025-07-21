@@ -26,7 +26,6 @@ class Dashboard(customtkinter.CTk):
         self.module_frame.pack(fill="both", expand=True)
 
     def logout(self):
-        self.conn.close()
         self.destroy()
         if hasattr(self, 'on_logout') and callable(self.on_logout):
             self.on_logout()

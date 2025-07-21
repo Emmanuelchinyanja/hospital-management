@@ -96,7 +96,7 @@ class LoginPage(customtkinter.CTk):
             if result:
                 role = result[0]
                 self.status_label.configure(text="")
-                self.withdraw()  # Hide login window
+                self.withdraw()
                 app = Dashboard(username, role)
                 app.on_logout = self.restart_login
                 app.mainloop()

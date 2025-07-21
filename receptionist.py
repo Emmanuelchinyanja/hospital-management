@@ -86,17 +86,33 @@ class ReceptionistFrame(customtkinter.CTkFrame):
     def show_view_patients(self):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text="Patients List", font=("Arial", 18, "bold")).pack(pady=10)
+
+        table_frame = customtkinter.CTkScrollableFrame(self.content, width=700, height=350)
+        table_frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+        # Table headers
+        headers = ["ID", "Name", "DOB", "Gender", "Registered", "Action"]
+        for col, h in enumerate(headers):
+            customtkinter.CTkLabel(table_frame, text=h, font=("Arial", 12, "bold")).grid(row=0, column=col, padx=8, pady=4, sticky="w")
+
         try:
             self.cursor.execute("SELECT patient_id, name, date_of_birth, gender, date_registered FROM patients")
             patients = self.cursor.fetchall()
             if not patients:
-                customtkinter.CTkLabel(self.content, text="No patient records found.").pack()
+                customtkinter.CTkLabel(table_frame, text="No patient records found.").grid(row=1, column=0, columnspan=6, pady=10)
             else:
-                for p in patients:
-                    customtkinter.CTkLabel(
-                        self.content,
-                        text=f"ID: {p[0]}, Name: {p[1]}, DOB: {p[2]}, Gender: {p[3]}, Registered: {p[4]}"
-                    ).pack(anchor="w", padx=20)
+                for i, p in enumerate(patients, start=1):
+                    for col, val in enumerate(p):
+                        customtkinter.CTkLabel(table_frame, text=str(val)).grid(row=i, column=col, padx=8, pady=2, sticky="w")
+                    def make_view_callback(patient_id=p[0]):
+                        def view_patient():
+                            # Fetch more details if needed, here just showing all columns
+                            self.cursor.execute("SELECT * FROM patients WHERE patient_id = %s", (patient_id,))
+                            details = self.cursor.fetchone()
+                            detail_text = "\n".join(f"{desc[0]}: {val}" for desc, val in zip(self.cursor.description, details))
+                            messagebox.showinfo("Patient Details", detail_text)
+                        return view_patient
+                    customtkinter.CTkButton(table_frame, text="View", width=60, command=make_view_callback()).grid(row=i, column=5, padx=8, pady=2)
         except Exception as err:
             messagebox.showerror("Database Error", f"Error: {err}")
 
