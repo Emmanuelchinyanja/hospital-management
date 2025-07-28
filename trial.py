@@ -295,13 +295,13 @@ class LoginPage(customtkinter.CTk):
         self.update()
         
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
+            self.conn = get_connection()
+            self.cursor = self.conn.cursor()
             
             # More secure query (consider using hashed passwords in production)
-            cursor.execute("SELECT role FROM users WHERE username=%s AND password=%s", (username, password))
-            result = cursor.fetchone()
-            conn.close()
+            self.cursor.execute("SELECT role FROM users WHERE username=%s AND password=%s", (username, password))
+            result = self.cursor.fetchone()
+            self.conn.close()
             
             if result:
                 role = result[0]
@@ -330,6 +330,11 @@ class LoginPage(customtkinter.CTk):
         self.toggle_btn.configure(text="👁️ Show Password")
         self.deiconify()  # Show login window again
         self.username_entry.focus()  # Focus on username field
+
+    def logout(self):
+        self.conn.close()
+        self.cursor.close()
+        # Do NOT use self.conn or self.cursor after this!
 
 if __name__ == "__main__":
     customtkinter.set_appearance_mode("light")
