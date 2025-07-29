@@ -8,7 +8,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         super().__init__(master)
         self.username = username
         self.conn = get_connection()
-        self.cursor = self.conn.cursor()
+        self.cursor = self.conn.cursor(buffered=True)
         
         # Professional color scheme
         self.colors = {
@@ -36,7 +36,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         self.create_sidebar()
         
         # Create main content area
-        self.content = customtkinter.CTkFrame(self, fg_color=self.colors['light_gray'])
+        self.content = customtkinter.CTkScrollableFrame(self, fg_color=self.colors['light_gray'])
         self.content.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
         
         # Create footer
@@ -304,6 +304,13 @@ class DoctorFrame(customtkinter.CTkFrame):
                 
                 self.username = fname
                 log_action(self.username, "Doctor", "Registered new doctor profile")
+                
+                # After registering a doctor
+                self.cursor.execute("SELECT id FROM doctors WHERE firstname=%s AND lastname=%s", (fname, lname))
+                row = self.cursor.fetchone()
+                if row:
+                    self.doctor_id = row[0]
+                
                 self.check_and_register_doctor()
                 
             except Exception as err:
@@ -481,7 +488,8 @@ class DoctorFrame(customtkinter.CTkFrame):
                 values=[f"{p[0]} - {p[1]}" for p in patients],
                 width=500,
                 height=35,
-                font=("Arial", 12)
+                font=("Arial", 12),
+                command=lambda _: show_patient_details()  # This ensures the details update on selection
             )
             patient_combo.pack(anchor="w", padx=20, pady=(0, 20))
             
@@ -531,7 +539,7 @@ class DoctorFrame(customtkinter.CTkFrame):
                 
                 # Latest vitals
                 self.cursor.execute(
-                    """SELECT treatment_id, blood_pressure, temperature, weight, date, symptoms, treatment, heart_rate
+                    """SELECT treatment_id, blood_pressure, temperature, weight, date, symptoms, treatment
                        FROM treatments WHERE patient_id=%s ORDER BY date DESC LIMIT 1""",
                     (pid,)
                 )
@@ -556,7 +564,6 @@ class DoctorFrame(customtkinter.CTkFrame):
                         ("🫀 Blood Pressure", latest_vitals[1] or "Not recorded"),
                         ("🌡️ Temperature", f"{latest_vitals[2]}°C" if latest_vitals[2] else "Not recorded"),
                         ("⚖️ Weight", f"{latest_vitals[3]} kg" if latest_vitals[3] else "Not recorded"),
-                        ("💓 Heart Rate", f"{latest_vitals[7]} bpm" if latest_vitals[7] else "Not recorded")
                     ]
                     
                     for i, (label, value) in enumerate(vital_data):
@@ -650,9 +657,9 @@ class DoctorFrame(customtkinter.CTkFrame):
                         try:
                             # Update the latest treatment record
                             self.cursor.execute(
-                                """UPDATE treatments SET doctor_id=%s, symptoms=%s, treatment=%s 
+                                """UPDATE treatments SET doctor_id=%s, symptoms=%s, treatment=%s, date=CURRENT_TIMESTAMP
                                    WHERE treatment_id=%s""",
-                                (getattr(self, 'doctor_id', 0), symptoms, treatment, latest_vitals[0])
+                                (self.doctor_id, symptoms, treatment, latest_vitals[0])
                             )
                             self.conn.commit()
                             
@@ -749,7 +756,6 @@ class DoctorFrame(customtkinter.CTkFrame):
                     if record[1]: vitals_parts.append(f"BP: {record[1]}")
                     if record[2]: vitals_parts.append(f"Temp: {record[2]}°C")
                     if record[3]: vitals_parts.append(f"Weight: {record[3]}kg")
-                    if record[6]: vitals_parts.append(f"HR: {record[6]}bpm")
                     
                     if vitals_parts:
                         vitals_text += " | ".join(vitals_parts)
@@ -854,10 +860,11 @@ class DoctorFrame(customtkinter.CTkFrame):
                 """SELECT DISTINCT t.patient_id, p.name, COUNT(t.treatment_id) as visits
                    FROM treatments t
                    JOIN patients p ON t.patient_id = p.patient_id
-                   WHERE t.doctor_id=%s AND DATE(t.date)=%s
+                   WHERE t.doctor_id = %s AND DATE(t.date) = CURDATE()
                    GROUP BY t.patient_id, p.name
-                   ORDER BY MAX(t.date) DESC""",
-                (getattr(self, 'doctor_id', 0), today)
+                   ORDER BY MAX(t.date) DESC
+                """,
+                (self.doctor_id,)
             )
             patients = self.cursor.fetchall()
             
@@ -1304,6 +1311,14 @@ class DoctorFrame(customtkinter.CTkFrame):
                     font=("Arial", 12)
                 ).pack(pady=(0, 15))
                 
+            else:
+                customtkinter.CTkLabel(
+                    self.content,
+                    text="No doctor profile found. Please register.",
+                    font=("Arial", 14),
+                    text_color=self.colors['danger']
+                ).pack(pady=50)
+                
         except Exception as e:
             customtkinter.CTkLabel(
                 self.content,
@@ -1344,6 +1359,7 @@ class DoctorFrame(customtkinter.CTkFrame):
             messagebox.showerror("❌ Error", f"Error checking emergencies: {str(e)}")
 
     def logout(self):
+        """Enhanced logout with confirmation"""
         """Enhanced logout with confirmation"""
         result = messagebox.askyesno(
             "🚪 Logout Confirmation",

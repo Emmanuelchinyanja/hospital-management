@@ -10,7 +10,7 @@ def get_connection():
 
 def log_action(user, department, action):
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     cursor.execute(
         "INSERT INTO logs (user, department, action) VALUES (%s, %s, %s)",
         (user, department, action)
