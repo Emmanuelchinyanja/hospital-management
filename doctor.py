@@ -73,7 +73,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         # Doctor info and time
         user_frame = customtkinter.CTkFrame(header, fg_color="transparent")
         user_frame.pack(side="right", padx=20, pady=10)
-        
+
         current_time = datetime.datetime.now().strftime("%H:%M - %B %d, %Y")
         customtkinter.CTkLabel(
             user_frame,
@@ -81,13 +81,26 @@ class DoctorFrame(customtkinter.CTkFrame):
             font=("Arial", 14, "bold"),
             text_color="white"
         ).pack(anchor="e")
-        
+
         customtkinter.CTkLabel(
             user_frame,
             text=current_time,
             font=("Arial", 11),
             text_color=self.colors['light_blue']
         ).pack(anchor="e")
+
+        # Add logout button to header (top right)
+        logout_btn = customtkinter.CTkButton(
+            user_frame,
+            text="🚪 Logout",
+            command=self.logout,
+            height=35,
+            font=("Arial", 12, "bold"),
+            fg_color=self.colors['danger'],
+            hover_color="#c0392b",
+            text_color="white"
+        )
+        logout_btn.pack(anchor="e", pady=(10, 0))
 
     def create_sidebar(self):
         """Create enhanced sidebar"""

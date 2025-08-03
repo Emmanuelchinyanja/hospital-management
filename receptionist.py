@@ -33,9 +33,8 @@ class ReceptionistFrame(customtkinter.CTkFrame):
         self.grid_columnconfigure(1, weight=1)
 
         # Enhanced Sidebar
-        self.sidebar = customtkinter.CTkFrame(self, width=280, fg_color=self.primary_color, corner_radius=0)
+        self.sidebar = customtkinter.CTkScrollableFrame(self, width=280, fg_color=self.primary_color, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="ns")
-        self.sidebar.grid_propagate(False)
         
         # Sidebar Header
         header_frame = customtkinter.CTkFrame(self.sidebar, fg_color=self.secondary_color, height=100)
@@ -151,7 +150,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
             hover_color="#c82333",
             corner_radius=8
         )
-        logout_btn.pack(side="bottom", fill="x", padx=15, pady=20)
+        logout_btn.pack(fill="x", padx=15, pady=20)
 
         # Main content area
         self.content = customtkinter.CTkFrame(self, fg_color=self.light_bg, corner_radius=0)
