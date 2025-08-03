@@ -9,6 +9,7 @@ class NurseFrame(customtkinter.CTkFrame):
         self.username = username
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
+        self.on_logout = None  # <-- Add this line
 
         # Simple layout
         self.grid_rowconfigure(0, weight=1)
@@ -705,7 +706,10 @@ class NurseFrame(customtkinter.CTkFrame):
             except:
                 pass
             self.master.destroy()
+            if self.on_logout:
+                self.on_logout()
+        # Do NOT use self.cursor or self.conn after closing!
 
         # Debugging: Show treatment table structure
-        self.cursor.execute("SHOW COLUMNS FROM treatments")
-        print(self.cursor.fetchall())
+        # self.cursor.execute("SHOW COLUMNS FROM treatments")
+        # print(self.cursor.fetchall())

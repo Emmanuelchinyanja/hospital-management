@@ -12,6 +12,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
         self.username = username
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
+        self.on_logout = None  # Add this line
         self.current_view = "dashboard"
         
         # Configure colors
@@ -1181,7 +1182,6 @@ contact IT Support immediately."""
         messagebox.showinfo("Help & Support", help_text)
 
     def logout(self):
-        """Close database connection and logout"""
         try:
             if self.conn:
                 self.conn.close()
@@ -1189,3 +1189,5 @@ contact IT Support immediately."""
         except:
             pass
         self.master.destroy()
+        if self.on_logout:
+            self.on_logout()

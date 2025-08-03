@@ -307,12 +307,46 @@ class LoginPage(customtkinter.CTk):
                 role = result[0]
                 self.status_label.configure(text="✅ Login successful! Loading dashboard...", text_color="#28a745")
                 self.update()
-                
-                # Hide login window and show dashboard
                 self.withdraw()
-                app = Dashboard(username, role)
-                app.on_logout = self.restart_login
-                app.mainloop()
+                # Pass self.restart_login as on_logout to each frame
+                if role == "Admin":
+                    from admin import AdminFrame
+                    app = customtkinter.CTk()
+                    frame = AdminFrame(app, username)
+                    frame.on_logout = self.restart_login
+                    frame.pack(fill="both", expand=True)
+                    app.protocol("WM_DELETE_WINDOW", self.restart_login)
+                    app.mainloop()
+                elif role == "Doctor":
+                    from doctor import DoctorFrame
+                    app = customtkinter.CTk()
+                    frame = DoctorFrame(app, username)
+                    frame.on_logout = self.restart_login
+                    frame.pack(fill="both", expand=True)
+                    app.protocol("WM_DELETE_WINDOW", self.restart_login)
+                    app.mainloop()
+                elif role == "Receptionist":
+                    from receptionist import ReceptionistFrame
+                    app = customtkinter.CTk()
+                    frame = ReceptionistFrame(app, username)
+                    frame.on_logout = self.restart_login
+                    frame.pack(fill="both", expand=True)
+                    app.protocol("WM_DELETE_WINDOW", self.restart_login)
+                    app.mainloop()
+                elif role == "Nurse":
+                    from nurse import NurseFrame
+                    app = customtkinter.CTk()
+                    frame = NurseFrame(app, username)
+                    frame.on_logout = self.restart_login  # This makes logout return to login page
+                    frame.pack(fill="both", expand=True)
+                    app.protocol("WM_DELETE_WINDOW", self.restart_login)
+                    app.mainloop()
+                else:
+                    # Default dashboard
+                    from dashboard import Dashboard
+                    app = Dashboard(username, role)
+                    app.on_logout = self.restart_login
+                    app.mainloop()
             else:
                 self.status_label.configure(text="❌ Invalid username or password. Please try again.", text_color="#dc3545")
                 

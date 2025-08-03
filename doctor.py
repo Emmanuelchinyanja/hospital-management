@@ -9,6 +9,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         self.username = username
         self.conn = get_connection()
         self.cursor = self.conn.cursor(buffered=True)
+        self.on_logout = None  # Add this line
         
         # Professional color scheme
         self.colors = {
@@ -1359,19 +1360,17 @@ class DoctorFrame(customtkinter.CTkFrame):
             messagebox.showerror("❌ Error", f"Error checking emergencies: {str(e)}")
 
     def logout(self):
-        """Enhanced logout with confirmation"""
-        """Enhanced logout with confirmation"""
         result = messagebox.askyesno(
             "🚪 Logout Confirmation",
             f"Are you sure you want to logout, Dr. {self.username}?\n\nAll unsaved work will be lost."
         )
-        
         if result:
             try:
                 log_action(self.username, "Doctor", "Logged out from medical system")
                 self.conn.close()
             except:
                 pass
-            
             messagebox.showinfo("👋 Goodbye", f"Thank you for your service, Dr. {self.username}!")
             self.master.destroy()
+            if self.on_logout:
+                self.on_logout()

@@ -1,5 +1,7 @@
 import customtkinter
-from tkinter import messagebox
+from tkinter import messagebox, ttk
+import tkinter as tk
+from datetime import datetime, date
 from db_connection import get_connection
 
 class AdminFrame(customtkinter.CTkFrame):
@@ -8,35 +10,83 @@ class AdminFrame(customtkinter.CTkFrame):
         self.username = username
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
+        self.on_logout = None  # Add this line
 
         # Layout: Sidebar and Main Content
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        # Sidebar
-        self.sidebar = customtkinter.CTkFrame(self, width=180, fg_color="#2e3f4f")
+        # Sidebar with Queen Elizabeth Hospital branding
+        self.sidebar = customtkinter.CTkFrame(self, width=220, fg_color="#1a472a")
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False)
 
-        customtkinter.CTkLabel(self.sidebar, text="Admin", font=("Arial", 18, "bold"),
-                               fg_color="#2e3f4f", text_color="white").pack(pady=(30, 20))
-        customtkinter.CTkButton(self.sidebar, text="Dashboard Home", command=self.show_welcome).pack(fill="x", padx=20, pady=5)
-        customtkinter.CTkButton(self.sidebar, text="View System Logs", command=self.show_logs).pack(fill="x", padx=20, pady=5)
-        customtkinter.CTkButton(self.sidebar, text="Logout", command=self.logout).pack(side="bottom", fill="x", padx=20, pady=20)
+        # Hospital Logo/Title
+        customtkinter.CTkLabel(
+            self.sidebar, 
+            text="Queen Elizabeth\nCentral Hospital", 
+            font=("Arial", 16, "bold"),
+            fg_color="#1a472a", 
+            text_color="white",
+            justify="center"
+        ).pack(pady=(20, 10))
+        
+        customtkinter.CTkLabel(
+            self.sidebar, 
+            text="Administrator Portal", 
+            font=("Arial", 12),
+            fg_color="#1a472a", 
+            text_color="#cccccc"
+        ).pack(pady=(0, 20))
+
+        # Navigation buttons
+        self.nav_buttons = {}
+        nav_items = [
+            ("Dashboard", self.show_dashboard),
+            ("User Management", self.show_user_management),
+            ("Staff Management", self.show_staff_management),
+            ("Patient Records", self.show_patient_records),
+            ("Treatment Records", self.show_treatment_records),
+            ("System Reports", self.show_system_reports),
+            ("System Logs", self.show_logs),
+            ("Database Backup", self.show_backup_options)
+        ]
+        
+        for text, command in nav_items:
+            btn = customtkinter.CTkButton(
+                self.sidebar, 
+                text=text, 
+                command=command,
+                height=35,
+                font=("Arial", 12)
+            )
+            btn.pack(fill="x", padx=15, pady=3)
+            self.nav_buttons[text] = btn
+
+        # Logout button at bottom
+        customtkinter.CTkButton(
+            self.sidebar, 
+            text="Logout", 
+            command=self.logout,
+            fg_color="#8B0000",
+            hover_color="#A52A2A",
+            height=40,
+            font=("Arial", 12, "bold")
+        ).pack(side="bottom", fill="x", padx=15, pady=20)
 
         # Main content area
         self.content = customtkinter.CTkFrame(self, fg_color="white")
-        self.content.grid(row=0, column=1, sticky="nsew")
-        self.show_welcome()
+        self.content.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.show_dashboard()
 
     def clear_content(self):
         for widget in self.content.winfo_children():
             widget.destroy()
 
-    def show_welcome(self):
+    def show_dashboard(self):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text=f"Welcome, Admin {self.username}!", font=("Arial", 22, "bold")).pack(pady=40)
-        customtkinter.CTkLabel(self.content, text="Use the sidebar to view logs or manage the system.", font=("Arial", 14)).pack(pady=10)
+        customtkinter.CTkLabel(self.content, text="Use the sidebar to navigate the admin portal.", font=("Arial", 14)).pack(pady=10)
 
     def show_logs(self):
         self.clear_content()
@@ -109,3 +159,59 @@ class AdminFrame(customtkinter.CTkFrame):
     def logout(self):
         self.conn.close()
         self.master.destroy()
+        if self.on_logout:
+            self.on_logout()
+
+    def show_user_management(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="User Management (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
+
+    def show_staff_management(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="Staff Management (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
+
+    def show_patient_records(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="Patient Records (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
+
+    def show_treatment_records(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="Treatment Records (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
+
+    def show_system_reports(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="System Reports (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
+
+    def show_backup_options(self):
+        self.clear_content()
+        customtkinter.CTkLabel(
+            self.content,
+            text="Database Backup & Maintenance (Coming Soon)",
+            font=("Arial", 18, "bold"),
+            text_color="#1a472a"
+        ).pack(pady=40)
