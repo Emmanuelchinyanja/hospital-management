@@ -1,3 +1,4 @@
+import os
 import customtkinter
 from tkinter import messagebox, ttk
 import tkinter as tk
@@ -454,13 +455,13 @@ class AdminFrame(customtkinter.CTkFrame):
                     treatment_frame.pack(fill="x", pady=10, padx=10)
                     doctor_name = f"{treatment[7]} {treatment[8]}" if treatment[7] else "Unknown Doctor"
                     treatment_info = f"""
-Treatment ID: {treatment[0]}
-Date: {treatment[6]}
-Doctor: {doctor_name}
-Symptoms: {treatment[1] or 'Not specified'}
-Treatment: {treatment[2] or 'Not specified'}
-Vitals: BP: {treatment[3]}, Temp: {treatment[4]}°C, Weight: {treatment[5]}kg
-"""
+                        Treatment ID: {treatment[0]}
+                        Date: {treatment[6]}
+                        Doctor: {doctor_name}
+                        Symptoms: {treatment[1] or 'Not specified'}
+                        Treatment: {treatment[2] or 'Not specified'}
+                        Vitals: BP: {treatment[3]}, Temp: {treatment[4]}°C, Weight: {treatment[5]}kg
+                        """
                     customtkinter.CTkLabel(
                         treatment_frame,
                         text=treatment_info,
@@ -586,7 +587,7 @@ Vitals: BP: {treatment[3]}, Temp: {treatment[4]}°C, Weight: {treatment[5]}kg
         ).pack(pady=10)
 
     def generate_monthly_report(self):
-        # ...use your existing code for monthly report...
+        pass # TODO ...use your existing code for monthly report...
 
     def show_department_stats(self):
          pass  # TODO: Implement department stats
