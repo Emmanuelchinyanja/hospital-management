@@ -279,8 +279,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
             self.cursor.execute("""
                 SELECT patient_id, name, date_of_birth, gender, phone, address, date_registered 
                 FROM patients 
-                ORDER BY date_registered DESC 
-                LIMIT 5
+                ORDER BY date_registered DESC
             """)
             recent_patients = self.cursor.fetchall()
             
@@ -289,7 +288,7 @@ class ReceptionistFrame(customtkinter.CTkFrame):
                 table_frame = customtkinter.CTkFrame(parent, fg_color="transparent")
                 table_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
                 
-                headers = ["ID", "Name", "Date of Birth", "Gender", "Phone", "Address", "Registered"]
+                headers = ["ID", "Name", "Date of Birth", "Gender", "Phone", "Address", "Registered", "Actions"]
                 header_frame = customtkinter.CTkFrame(table_frame, fg_color=self.light_bg)
                 header_frame.pack(fill="x", pady=(0, 5))
                 
@@ -298,7 +297,8 @@ class ReceptionistFrame(customtkinter.CTkFrame):
                         header_frame, 
                         text=header, 
                         font=("Arial", 12, "bold"),
-                        text_color=self.primary_color
+                        text_color=self.primary_color,
+                        width=120
                     ).grid(row=0, column=i, padx=10, pady=8, sticky="w")
                 
                 # Table rows
@@ -317,7 +317,8 @@ class ReceptionistFrame(customtkinter.CTkFrame):
                             row_frame, 
                             text=display_value, 
                             font=("Arial", 11),
-                            text_color="#333"
+                            text_color="#333",
+                            width=120
                         ).grid(row=0, column=j, padx=10, pady=6, sticky="w")
             else:
                 customtkinter.CTkLabel(
