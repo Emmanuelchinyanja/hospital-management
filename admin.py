@@ -586,10 +586,297 @@ Vitals: BP: {treatment[3]}, Temp: {treatment[4]}°C, Weight: {treatment[5]}kg
         ).pack(pady=10)
 
     def generate_monthly_report(self):
-        # ...use your existing code for monthly report...
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="Monthly Report", font=("Arial", 20, "bold")).pack(pady=20)
+        
+        # Get current month and year
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        month_name = datetime.now().strftime("%B")
+        
+        customtkinter.CTkLabel(
+            self.content,
+            text=f"Report for {month_name} {current_year}",
+            font=("Arial", 16, "bold")
+        ).pack(pady=10)
+        
+        # Create a scrollable frame for the report
+        report_frame = customtkinter.CTkScrollableFrame(self.content, width=700, height=400)
+        report_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        try:
+            # Get patient registrations for current month
+            self.cursor.execute("""
+                SELECT COUNT(*) FROM patients
+                WHERE MONTH(date_registered) = %s AND YEAR(date_registered) = %s
+            """, (current_month, current_year))
+            patient_count = self.cursor.fetchone()[0]
+            
+            # Get treatment records for current month
+            self.cursor.execute("""
+                SELECT COUNT(*) FROM treatments
+                WHERE MONTH(date) = %s AND YEAR(date) = %s
+            """, (current_month, current_year))
+            treatment_count = self.cursor.fetchone()[0]
+            
+            # Get doctor registrations for current month
+            self.cursor.execute("""
+                SELECT COUNT(*) FROM doctors
+                WHERE MONTH(date_registered) = %s AND YEAR(date_registered) = %s
+            """, (current_month, current_year))
+            doctor_count = self.cursor.fetchone()[0]
+            
+            # Get user registrations for current month
+            self.cursor.execute("""
+                SELECT COUNT(*) FROM users
+                WHERE MONTH(timestamp) = %s AND YEAR(timestamp) = %s
+            """, (current_month, current_year))
+            user_count = self.cursor.fetchone()[0]
+            
+            # Display statistics
+            stats_frame = customtkinter.CTkFrame(report_frame)
+            stats_frame.pack(fill="x", padx=10, pady=10)
+            
+            customtkinter.CTkLabel(
+                stats_frame,
+                text="Monthly Statistics",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            # Create a grid for statistics
+            grid_frame = customtkinter.CTkFrame(stats_frame, fg_color="transparent")
+            grid_frame.pack(fill="x", padx=20, pady=10)
+            
+            # Patient registrations
+            patient_card = customtkinter.CTkFrame(grid_frame, width=200, height=100)
+            patient_card.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+            patient_card.grid_propagate(False)
+            customtkinter.CTkLabel(
+                patient_card,
+                text="Patients Registered",
+                font=("Arial", 12)
+            ).pack(pady=(10, 5))
+            customtkinter.CTkLabel(
+                patient_card,
+                text=str(patient_count),
+                font=("Arial", 24, "bold")
+            ).pack()
+            
+            # Treatment records
+            treatment_card = customtkinter.CTkFrame(grid_frame, width=200, height=100)
+            treatment_card.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+            treatment_card.grid_propagate(False)
+            customtkinter.CTkLabel(
+                treatment_card,
+                text="Treatment Records",
+                font=("Arial", 12)
+            ).pack(pady=(10, 5))
+            customtkinter.CTkLabel(
+                treatment_card,
+                text=str(treatment_count),
+                font=("Arial", 24, "bold")
+            ).pack()
+            
+            # Doctor registrations
+            doctor_card = customtkinter.CTkFrame(grid_frame, width=200, height=100)
+            doctor_card.grid(row=0, column=2, padx=10, pady=10, sticky="ew")
+            doctor_card.grid_propagate(False)
+            customtkinter.CTkLabel(
+                doctor_card,
+                text="Doctors Registered",
+                font=("Arial", 12)
+            ).pack(pady=(10, 5))
+            customtkinter.CTkLabel(
+                doctor_card,
+                text=str(doctor_count),
+                font=("Arial", 24, "bold")
+            ).pack()
+            
+            # User registrations
+            user_card = customtkinter.CTkFrame(grid_frame, width=200, height=100)
+            user_card.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+            user_card.grid_propagate(False)
+            customtkinter.CTkLabel(
+                user_card,
+                text="Users Registered",
+                font=("Arial", 12)
+            ).pack(pady=(10, 5))
+            customtkinter.CTkLabel(
+                user_card,
+                text=str(user_count),
+                font=("Arial", 24, "bold")
+            ).pack()
+            
+            # Configure grid weights for responsive design
+            grid_frame.grid_columnconfigure((0, 1, 2), weight=1)
+            
+            # Add a section for recent treatments
+            recent_treatments_frame = customtkinter.CTkFrame(report_frame)
+            recent_treatments_frame.pack(fill="x", padx=10, pady=(20, 10))
+            customtkinter.CTkLabel(
+                recent_treatments_frame,
+                text="Recent Treatments This Month",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            # Fetch recent treatments
+            self.cursor.execute("""
+                SELECT t.treatment_id, p.name, t.symptoms, t.treatment, t.date, d.firstname, d.lastname
+                FROM treatments t
+                JOIN patients p ON t.patient_id = p.patient_id
+                LEFT JOIN doctors d ON t.doctor_id = d.id
+                WHERE MONTH(t.date) = %s AND YEAR(t.date) = %s
+                ORDER BY t.date DESC
+                LIMIT 10
+            """, (current_month, current_year))
+            treatments = self.cursor.fetchall()
+            
+            if treatments:
+                # Create a table for treatments
+                table_frame = customtkinter.CTkFrame(recent_treatments_frame)
+                table_frame.pack(fill="x", padx=20, pady=10)
+                
+                # Table header
+                header_frame = customtkinter.CTkFrame(table_frame, fg_color="#e0e0e0")
+                header_frame.pack(fill="x", padx=5, pady=(0, 5))
+                headers = ["ID", "Patient", "Symptoms", "Treatment", "Date", "Doctor"]
+                for i, header in enumerate(headers):
+                    customtkinter.CTkLabel(
+                        header_frame,
+                        text=header,
+                        font=("Arial", 12, "bold"),
+                        width=100
+                    ).pack(side="left", padx=5, pady=5)
+                
+                # Table rows
+                for treatment in treatments:
+                    row_frame = customtkinter.CTkFrame(table_frame)
+                    row_frame.pack(fill="x", padx=5, pady=2)
+                    doctor_name = f"{treatment[5]} {treatment[6]}" if treatment[5] else "Unknown"
+                    data = [
+                        str(treatment[0]),
+                        treatment[1][:15] + "..." if len(treatment[1]) > 15 else treatment[1],
+                        treatment[2][:20] + "..." if treatment[2] and len(treatment[2]) > 20 else treatment[2] or "N/A",
+                        treatment[3][:20] + "..." if treatment[3] and len(treatment[3]) > 20 else treatment[3] or "N/A",
+                        str(treatment[4]).split()[0],
+                        doctor_name[:15] + "..." if len(doctor_name) > 15 else doctor_name
+                    ]
+                    for value in data:
+                        customtkinter.CTkLabel(
+                            row_frame,
+                            text=value,
+                            font=("Arial", 10),
+                            width=100
+                        ).pack(side="left", padx=5, pady=5)
+            else:
+                customtkinter.CTkLabel(
+                    recent_treatments_frame,
+                    text="No treatments recorded this month.",
+                    font=("Arial", 12)
+                ).pack(pady=10)
+                
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Error generating report: {e}")
 
     def show_department_stats(self):
-         pass  # TODO: Implement department stats
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="Department Statistics", font=("Arial", 20, "bold")).pack(pady=20)
+        
+        # Create a scrollable frame for the statistics
+        stats_frame = customtkinter.CTkScrollableFrame(self.content, width=700, height=400)
+        stats_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        try:
+            # Get patient count by gender
+            self.cursor.execute("SELECT gender, COUNT(*) FROM patients GROUP BY gender")
+            patient_gender_data = self.cursor.fetchall()
+            
+            # Get patient count by blood type
+            self.cursor.execute("SELECT blood_type, COUNT(*) FROM patients GROUP BY blood_type")
+            patient_blood_data = self.cursor.fetchall()
+            
+            # Get treatment count by doctor
+            self.cursor.execute("""
+                SELECT d.firstname, d.lastname, COUNT(t.treatment_id) as treatment_count
+                FROM doctors d
+                LEFT JOIN treatments t ON d.id = t.doctor_id
+                GROUP BY d.id, d.firstname, d.lastname
+                ORDER BY treatment_count DESC
+            """)
+            doctor_treatment_data = self.cursor.fetchall()
+            
+            # Display patient gender statistics
+            gender_frame = customtkinter.CTkFrame(stats_frame)
+            gender_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                gender_frame,
+                text="Patient Gender Distribution",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if patient_gender_data:
+                for gender, count in patient_gender_data:
+                    customtkinter.CTkLabel(
+                        gender_frame,
+                        text=f"{gender.capitalize()}: {count}",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    gender_frame,
+                    text="No patient gender data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+            
+            # Display patient blood type statistics
+            blood_frame = customtkinter.CTkFrame(stats_frame)
+            blood_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                blood_frame,
+                text="Patient Blood Type Distribution",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if patient_blood_data:
+                for blood_type, count in patient_blood_data:
+                    customtkinter.CTkLabel(
+                        blood_frame,
+                        text=f"Blood Type {blood_type}: {count}",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    blood_frame,
+                    text="No patient blood type data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+            
+            # Display doctor treatment statistics
+            doctor_frame = customtkinter.CTkFrame(stats_frame)
+            doctor_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                doctor_frame,
+                text="Treatments by Doctor",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if doctor_treatment_data:
+                for firstname, lastname, count in doctor_treatment_data:
+                    doctor_name = f"{firstname} {lastname}" if firstname and lastname else "Unknown Doctor"
+                    customtkinter.CTkLabel(
+                        doctor_frame,
+                        text=f"{doctor_name}: {count} treatments",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    doctor_frame,
+                    text="No doctor treatment data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+                
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Error loading department statistics: {e}")
 
     def show_backup_options(self):
         self.clear_content()
@@ -609,15 +896,63 @@ Vitals: BP: {treatment[3]}, Temp: {treatment[4]}°C, Weight: {treatment[5]}kg
 
     def create_backup(self):
         try:
-            # Simple backup logic: copy the database file to a new location with a timestamp
-            import shutil
+            # Import required modules
+            import subprocess
+            import os
             from os.path import expanduser
+            
+            # Create backup directory
             user_home = expanduser("~")
-            backup_dir = f"{user_home}/hospital_backups"
+            backup_dir = os.path.join(user_home, "hospital_backups")
             os.makedirs(backup_dir, exist_ok=True)
+            
+            # Generate timestamp for backup file
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = f"{backup_dir}/hospital_db_backup_{timestamp}.sql"
-            shutil.copyfile("hospital_db.sql", backup_file)
-            messagebox.showinfo("Backup Successful", f"Database backup created:\n{backup_file}")
+            backup_file = os.path.join(backup_dir, f"hospital_db_backup_{timestamp}.sql")
+            
+            # Get database connection details
+            db_config = {
+                'host': 'localhost',
+                'user': 'root',
+                'password': '',
+                'database': 'hospital-management'
+            }
+            
+            # Create backup using mysqldump command
+            dump_command = [
+                'mysqldump',
+                f'--host={db_config["host"]}',
+                f'--user={db_config["user"]}',
+                f'--password={db_config["password"]}',
+                db_config["database"]
+            ]
+            
+            # Execute the mysqldump command and save to file
+            with open(backup_file, 'w') as output_file:
+                process = subprocess.run(
+                    dump_command,
+                    stdout=output_file,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+            # Check if the backup was successful
+            if process.returncode == 0:
+                messagebox.showinfo("Backup Successful", f"Database backup created:\n{backup_file}")
+            else:
+                # If mysqldump failed, try a simple file copy as fallback
+                # This assumes the database file is accessible directly
+                try:
+                    # Try to locate the database file (this is a simplified approach)
+                    # In a real application, you would need to know the exact path
+                    db_file_path = "db/hospital-management.sql"  # Adjust path as needed
+                    if os.path.exists(db_file_path):
+                        import shutil
+                        shutil.copyfile(db_file_path, backup_file)
+                        messagebox.showinfo("Backup Successful", f"Database backup created (using file copy):\n{backup_file}")
+                    else:
+                        raise Exception("Database file not found for backup")
+                except Exception as copy_error:
+                    messagebox.showerror("Backup Error", f"Error creating backup:\n{process.stderr}\n\nFallback error: {copy_error}")
         except Exception as e:
             messagebox.showerror("Backup Error", f"Error creating backup: {e}")
