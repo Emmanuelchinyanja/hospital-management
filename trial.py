@@ -24,7 +24,7 @@ class LoginPage(customtkinter.CTk):
         main_container.pack(fill="both", expand=True, padx=40, pady=40)
         
         # Header section with hospital branding
-        header_frame = customtkinter.CTkFrame(main_container, fg_color="#1e3a5f", height=120, corner_radius=15)
+        header_frame = customtkinter.CTkFrame(main_container, fg_color="#0d4ea3", height=120, corner_radius=15)
         header_frame.pack(fill="x", pady=(0, 30))
         header_frame.pack_propagate(False)
         
@@ -63,7 +63,7 @@ class LoginPage(customtkinter.CTk):
             text_frame, 
             text="Central Hospital • Blantyre, Malawi", 
             font=("Arial", 14), 
-            text_color="#a8c8ec"
+            text_color="#CDD3DB"
         )
         subtitle.pack(anchor="w")
         
@@ -174,7 +174,7 @@ class LoginPage(customtkinter.CTk):
             font=("Arial", 14, "bold"),
             fg_color="#1e3a5f",
             hover_color="#2d4a6b",
-            corner_radius=10
+            corner_radius=20
         )
         login_btn.pack(pady=25)
         

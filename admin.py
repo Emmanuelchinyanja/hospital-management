@@ -589,7 +589,7 @@ class AdminFrame(customtkinter.CTkFrame):
     def generate_monthly_report(self):
         # ...use your existing code for monthly report...
 
-    def show_department_stats(self):
+     def show_department_stats(self):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text="Department Statistics", font=("Arial", 20, "bold")).pack(pady=20)
         
