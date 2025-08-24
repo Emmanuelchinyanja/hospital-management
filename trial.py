@@ -1,10 +1,15 @@
-import customtkinter
-from tkinter import messagebox
-from db_connection import get_connection
-from dashboard import Dashboard
 import os
-from PIL import Image
-
+import customtkinter
+from tkinter import messagebox, ttk, filedialog
+import tkinter as tk
+from datetime import datetime, date
+from db_connection import get_connection
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.units import inch
+import calendar
 class LoginPage(customtkinter.CTk):
     def __init__(self):
         super().__init__()

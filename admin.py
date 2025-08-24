@@ -1,9 +1,15 @@
 import os
 import customtkinter
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 import tkinter as tk
 from datetime import datetime, date
 from db_connection import get_connection
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.units import inch
+import calendar
 
 class AdminFrame(customtkinter.CTkFrame):
     def __init__(self, master, username):
@@ -11,7 +17,7 @@ class AdminFrame(customtkinter.CTkFrame):
         self.username = username
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
-        self.on_logout = None  # Add this line
+        self.on_logout = None
 
         # Layout: Sidebar and Main Content
         self.grid_rowconfigure(0, weight=1)
@@ -40,14 +46,15 @@ class AdminFrame(customtkinter.CTkFrame):
             text_color="#cccccc"
         ).pack(pady=(0, 20))
 
-        # Navigation buttons
+        # Navigation buttons - REORDERED FOR BETTER WORKFLOW
         self.nav_buttons = {}
         nav_items = [
             ("Dashboard", self.show_dashboard),
-            ("User Management", self.show_user_management),
-            ("Staff Management", self.show_staff_management),
+            ("Pending Patients", self.show_pending_patients),  # NEW - Added first for priority
             ("Patient Records", self.show_patient_records),
             ("Treatment Records", self.show_treatment_records),
+            ("User Management", self.show_user_management),
+            ("Staff Management", self.show_staff_management),
             ("System Reports", self.show_system_reports),
             ("System Logs", self.show_logs),
             ("Database Backup", self.show_backup_options)
@@ -86,9 +93,213 @@ class AdminFrame(customtkinter.CTkFrame):
 
     def show_dashboard(self):
         self.clear_content()
-        customtkinter.CTkLabel(self.content, text=f"Welcome, Admin {self.username}!", font=("Arial", 22, "bold")).pack(pady=40)
-        customtkinter.CTkLabel(self.content, text="Use the sidebar to navigate the admin portal.", font=("Arial", 14)).pack(pady=10)
+        
+        # Enhanced Dashboard with Statistics
+        title_frame = customtkinter.CTkFrame(self.content, fg_color="transparent")
+        title_frame.pack(fill="x", padx=20, pady=20)
+        
+        customtkinter.CTkLabel(
+            title_frame,
+            text=f"Welcome, Admin {self.username}!",
+            font=("Arial", 22, "bold")
+        ).pack(anchor="w")
+        
+        customtkinter.CTkLabel(
+            title_frame,
+            text="Hospital Management System - Administrative Dashboard",
+            font=("Arial", 14),
+            text_color="#666"
+        ).pack(anchor="w", pady=(5, 0))
 
+        # Quick Stats Cards
+        try:
+            # Get statistics
+            self.cursor.execute("SELECT COUNT(*) FROM patients")
+            total_patients = self.cursor.fetchone()[0]
+            
+            # Pending patients (those without recent treatment)
+            self.cursor.execute("""
+                SELECT COUNT(DISTINCT p.patient_id) 
+                FROM patients p 
+                LEFT JOIN treatments t ON p.patient_id = t.patient_id AND DATE(t.date) = CURDATE()
+                WHERE t.patient_id IS NULL
+            """)
+            pending_patients = self.cursor.fetchone()[0]
+            
+            self.cursor.execute("SELECT COUNT(*) FROM doctors")
+            total_doctors = self.cursor.fetchone()[0]
+            
+            self.cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = self.cursor.fetchone()[0]
+            
+        except Exception:
+            total_patients = pending_patients = total_doctors = total_users = 0
+
+        # Stats display
+        stats_frame = customtkinter.CTkFrame(self.content, fg_color="transparent")
+        stats_frame.pack(fill="x", padx=20, pady=20)
+        
+        stats_data = [
+            ("Total Patients", total_patients, "#3498db"),
+            ("Pending Patients", pending_patients, "#e74c3c"),
+            ("Doctors", total_doctors, "#27ae60"),
+            ("System Users", total_users, "#9b59b6")
+        ]
+        
+        for i, (title, value, color) in enumerate(stats_data):
+            card = customtkinter.CTkFrame(stats_frame, fg_color=color, width=150, height=100)
+            card.grid(row=0, column=i, padx=10, pady=10, sticky="ew")
+            
+            customtkinter.CTkLabel(
+                card,
+                text=str(value),
+                font=("Arial", 24, "bold"),
+                text_color="white"
+            ).pack(pady=(20, 5))
+            
+            customtkinter.CTkLabel(
+                card,
+                text=title,
+                font=("Arial", 12),
+                text_color="white"
+            ).pack()
+
+        # Quick actions
+        actions_frame = customtkinter.CTkFrame(self.content)
+        actions_frame.pack(fill="x", padx=20, pady=20)
+        
+        customtkinter.CTkLabel(
+            actions_frame,
+            text="Quick Actions",
+            font=("Arial", 16, "bold")
+        ).pack(pady=10)
+        
+        quick_buttons = [
+            ("View Pending Patients", self.show_pending_patients),
+            ("Generate Monthly Report", self.generate_monthly_report),
+            ("View System Logs", self.show_logs),
+            ("Backup Database", self.create_backup)
+        ]
+        
+        buttons_frame = customtkinter.CTkFrame(actions_frame, fg_color="transparent")
+        buttons_frame.pack(pady=10)
+        
+        for i, (text, command) in enumerate(quick_buttons):
+            btn = customtkinter.CTkButton(
+                buttons_frame,
+                text=text,
+                command=command,
+                width=180,
+                height=35
+            )
+            btn.grid(row=i//2, column=i%2, padx=10, pady=5)
+
+    # NEW FEATURE: Pending Patients Management
+    def show_pending_patients(self):
+        """Show patients who need treatment attention"""
+        self.clear_content()
+        
+        customtkinter.CTkLabel(
+            self.content, 
+            text="Pending Patients - Require Medical Attention", 
+            font=("Arial", 20, "bold")
+        ).pack(pady=20)
+
+        try:
+            # Get patients who haven't been treated today or recently
+            self.cursor.execute("""
+                SELECT p.patient_id, p.name, p.gender, p.blood_type, p.date_registered,
+                       COALESCE(MAX(t.date), 'Never treated') as last_treatment
+                FROM patients p
+                LEFT JOIN treatments t ON p.patient_id = t.patient_id
+                WHERE p.patient_id NOT IN (
+                    SELECT DISTINCT patient_id FROM treatments 
+                    WHERE DATE(date) = CURDATE()
+                )
+                GROUP BY p.patient_id, p.name, p.gender, p.blood_type, p.date_registered
+                ORDER BY last_treatment DESC, p.date_registered ASC
+            """)
+            pending = self.cursor.fetchall()
+
+            if not pending:
+                customtkinter.CTkLabel(
+                    self.content,
+                    text="✅ No pending patients - All patients have been treated today!",
+                    font=("Arial", 16),
+                    text_color="green"
+                ).pack(pady=50)
+                return
+
+            # Statistics
+            stats_frame = customtkinter.CTkFrame(self.content)
+            stats_frame.pack(fill="x", padx=20, pady=10)
+            
+            customtkinter.CTkLabel(
+                stats_frame,
+                text=f"⚠️ {len(pending)} patients require medical attention",
+                font=("Arial", 16, "bold"),
+                text_color="#e74c3c"
+            ).pack(pady=15)
+
+            # Scrollable list
+            list_frame = customtkinter.CTkFrame(self.content)
+            list_frame.pack(fill="both", expand=True, padx=20, pady=10)
+            
+            # Create scrollable frame
+            scroll_frame = customtkinter.CTkScrollableFrame(list_frame, height=400)
+            scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+            # Header
+            header_frame = customtkinter.CTkFrame(scroll_frame, fg_color="#34495e")
+            header_frame.pack(fill="x", pady=(0, 5))
+            
+            headers = ["Patient ID", "Name", "Gender", "Blood Type", "Last Treatment", "Days Pending"]
+            for i, header in enumerate(headers):
+                customtkinter.CTkLabel(
+                    header_frame, 
+                    text=header, 
+                    font=("Arial", 12, "bold"), 
+                    text_color="white",
+                    width=120
+                ).grid(row=0, column=i, padx=5, pady=10)
+
+            # Patient rows
+            for patient in pending:
+                patient_frame = customtkinter.CTkFrame(scroll_frame, fg_color="#ecf0f1")
+                patient_frame.pack(fill="x", pady=2)
+                
+                # Calculate days pending
+                if patient[5] == 'Never treated':
+                    days_pending = "Never"
+                    priority_color = "#e74c3c"  # Red for never treated
+                else:
+                    try:
+                        last_date = datetime.strptime(str(patient[5]).split()[0], "%Y-%m-%d").date()
+                        days_pending = str((datetime.now().date() - last_date).days)
+                        priority_color = "#f39c12" if int(days_pending) > 7 else "#27ae60"
+                    except:
+                        days_pending = "Unknown"
+                        priority_color = "#95a5a6"
+
+                data = [patient[0], patient[1], patient[2], patient[3], 
+                       str(patient[5]).split()[0] if patient[5] != 'Never treated' else 'Never', 
+                       days_pending]
+                
+                for i, value in enumerate(data):
+                    label = customtkinter.CTkLabel(
+                        patient_frame, 
+                        text=str(value), 
+                        width=120,
+                        font=("Arial", 11)
+                    )
+                    if i == 5:  # Days pending column
+                        label.configure(text_color=priority_color, font=("Arial", 11, "bold"))
+                    label.grid(row=0, column=i, padx=5, pady=8)
+
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Error loading pending patients: {e}")
+
+    # FIXED: System Logs with Proper Scrolling and Ordering
     def show_logs(self):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text="System Logs", font=("Arial", 18, "bold")).pack(pady=10)
@@ -96,7 +307,7 @@ class AdminFrame(customtkinter.CTkFrame):
         # Filter section
         filter_frame = customtkinter.CTkFrame(self.content)
         filter_frame.pack(fill="x", padx=10, pady=5)
-        dept_combo = customtkinter.CTkComboBox(filter_frame, values=["All", "Receptionist", "Nurse", "Doctor"])
+        dept_combo = customtkinter.CTkComboBox(filter_frame, values=["All", "Receptionist", "Nurse", "Doctor", "Admin"])
         dept_combo.set("All")
         dept_combo.pack(side="left", padx=5)
         date_entry = customtkinter.CTkEntry(filter_frame, placeholder_text="YYYY-MM-DD (optional)")
@@ -104,12 +315,17 @@ class AdminFrame(customtkinter.CTkFrame):
         filter_btn = customtkinter.CTkButton(filter_frame, text="Filter", command=lambda: self.show_logs_filtered(dept_combo.get(), date_entry.get()))
         filter_btn.pack(side="left", padx=5)
 
+        # FIXED: Create main scrollable frame for logs
+        self.logs_main_frame = customtkinter.CTkFrame(self.content)
+        self.logs_main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
         self.show_logs_filtered("All", "")
 
     def show_logs_filtered(self, department, date_str):
-        for widget in self.content.winfo_children():
-            if isinstance(widget, customtkinter.CTkFrame) and widget != self.sidebar:
-                widget.destroy()
+        # Clear the main logs frame
+        for widget in self.logs_main_frame.winfo_children():
+            widget.destroy()
+            
         try:
             query = "SELECT log_id, user, department, action, log_date, timestamp FROM logs"
             params = []
@@ -122,28 +338,73 @@ class AdminFrame(customtkinter.CTkFrame):
                 params.append(date_str)
             if filters:
                 query += " WHERE " + " AND ".join(filters)
-            query += " ORDER BY timestamp DESC"
+            
+            # FIXED: Proper ordering by timestamp (newest first)
+            query += " ORDER BY timestamp DESC, log_id DESC"
+            
             self.cursor.execute(query, tuple(params))
             logs = self.cursor.fetchall()
+            
             if not logs:
-                customtkinter.CTkLabel(self.content, text="No logs found.").pack()
+                customtkinter.CTkLabel(self.logs_main_frame, text="No logs found.").pack(pady=50)
                 return
 
-            # Table header
-            header = customtkinter.CTkFrame(self.content, fg_color="#e0e0e0")
-            header.pack(fill="x", padx=10, pady=(10,2))
-            for col, w in zip(["ID", "User", "Department", "Action", "Date", "Time", "Delete"], [5, 15, 15, 40, 10, 15, 10]):
-                customtkinter.CTkLabel(header, text=col, width=w*10, anchor="w", font=("Arial", 12, "bold")).pack(side="left", padx=2)
+            # FIXED: Create properly scrollable frame
+            scroll_frame = customtkinter.CTkScrollableFrame(self.logs_main_frame, height=500)
+            scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
+            # Table header
+            header_frame = customtkinter.CTkFrame(scroll_frame, fg_color="#2c3e50")
+            header_frame.pack(fill="x", pady=(0, 5))
+            
+            headers = ["ID", "User", "Department", "Action", "Date", "Time", "Actions"]
+            widths = [60, 120, 120, 300, 100, 120, 80]
+            
+            for i, (header, width) in enumerate(zip(headers, widths)):
+                customtkinter.CTkLabel(
+                    header_frame, 
+                    text=header, 
+                    width=width, 
+                    font=("Arial", 12, "bold"),
+                    text_color="white"
+                ).grid(row=0, column=i, padx=2, pady=8, sticky="w")
+
+            # Log entries
             for log in logs:
-                frame = customtkinter.CTkFrame(self.content, fg_color="white")
-                frame.pack(fill="x", padx=10, pady=1)
-                for val, w in zip(log[:-1], [5, 15, 15, 40, 10]):
-                    customtkinter.CTkLabel(frame, text=str(val), width=w*10, anchor="w").pack(side="left", padx=2)
-                customtkinter.CTkLabel(frame, text=str(log[-1]).split()[1][:8], width=15*10, anchor="w").pack(side="left", padx=2)
-                del_btn = customtkinter.CTkButton(frame, text="Delete", width=60,
-                                                  command=lambda log_id=log[0]: self.delete_log(log_id))
-                del_btn.pack(side="left", padx=2)
+                log_frame = customtkinter.CTkFrame(scroll_frame, fg_color="#ecf0f1")
+                log_frame.pack(fill="x", pady=2)
+                
+                # Format timestamp
+                timestamp_str = str(log[5])
+                try:
+                    time_part = timestamp_str.split()[1][:8] if len(timestamp_str.split()) > 1 else "00:00:00"
+                except:
+                    time_part = "00:00:00"
+                
+                data = [log[0], log[1], log[2], log[3][:50] + "..." if len(str(log[3])) > 50 else log[3], 
+                       str(log[4]), time_part]
+                
+                for i, (value, width) in enumerate(zip(data, widths[:-1])):
+                    customtkinter.CTkLabel(
+                        log_frame, 
+                        text=str(value), 
+                        width=width,
+                        font=("Arial", 10),
+                        anchor="w"
+                    ).grid(row=0, column=i, padx=2, pady=5, sticky="w")
+                
+                # Delete button
+                del_btn = customtkinter.CTkButton(
+                    log_frame, 
+                    text="Delete", 
+                    width=70,
+                    height=25,
+                    font=("Arial", 10),
+                    fg_color="#e74c3c",
+                    command=lambda log_id=log[0]: self.delete_log(log_id)
+                )
+                del_btn.grid(row=0, column=6, padx=2, pady=2)
+
         except Exception as err:
             messagebox.showerror("Database Error", f"Error: {err}")
 
@@ -153,16 +414,408 @@ class AdminFrame(customtkinter.CTkFrame):
                 self.cursor.execute("DELETE FROM logs WHERE log_id=%s", (log_id,))
                 self.conn.commit()
                 messagebox.showinfo("Deleted", "Log entry deleted.")
-                self.show_logs()
+                self.show_logs_filtered("All", "")  # Refresh the display
             except Exception as err:
                 messagebox.showerror("Database Error", f"Error: {err}")
 
-    def logout(self):
-        self.conn.close()
-        self.master.destroy()
-        if self.on_logout:
-            self.on_logout()
+    # NEW: Monthly Report Generation with PDF Download
+    def show_system_reports(self):
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="System Reports & Analytics", font=("Arial", 20, "bold")).pack(pady=20)
+        
+        reports_frame = customtkinter.CTkFrame(self.content)
+        reports_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Monthly reports section
+        monthly_frame = customtkinter.CTkFrame(reports_frame)
+        monthly_frame.pack(fill="x", padx=20, pady=10)
+        
+        customtkinter.CTkLabel(monthly_frame, text="Monthly Reports", font=("Arial", 16, "bold")).pack(pady=10)
+        
+        # Month selection
+        month_frame = customtkinter.CTkFrame(monthly_frame, fg_color="transparent")
+        month_frame.pack(pady=10)
+        
+        customtkinter.CTkLabel(month_frame, text="Select Month:", font=("Arial", 12)).pack(side="left", padx=10)
+        
+        months = ["January", "February", "March", "April", "May", "June",
+                 "July", "August", "September", "October", "November", "December"]
+        month_combo = customtkinter.CTkComboBox(month_frame, values=months, width=120)
+        month_combo.set(months[datetime.now().month - 1])
+        month_combo.pack(side="left", padx=5)
+        
+        customtkinter.CTkLabel(month_frame, text="Year:", font=("Arial", 12)).pack(side="left", padx=10)
+        year_combo = customtkinter.CTkComboBox(month_frame, values=[str(y) for y in range(2020, 2030)], width=80)
+        year_combo.set(str(datetime.now().year))
+        year_combo.pack(side="left", padx=5)
+        
+        customtkinter.CTkButton(
+            monthly_frame, 
+            text="Generate Monthly Report (PDF)",
+            command=lambda: self.generate_monthly_report(month_combo.get(), year_combo.get()),
+            height=40,
+            font=("Arial", 12, "bold"),
+            fg_color="#27ae60"
+        ).pack(pady=15)
+        
+        # Department statistics
+        dept_frame = customtkinter.CTkFrame(reports_frame)
+        dept_frame.pack(fill="x", padx=20, pady=10)
+        customtkinter.CTkLabel(dept_frame, text="Department Activity", font=("Arial", 16, "bold")).pack(pady=10)
+        customtkinter.CTkButton(
+            dept_frame, text="View Department Statistics",
+            command=self.show_department_stats,
+            height=35
+        ).pack(pady=10)
 
+    def generate_monthly_report(self, month_name=None, year=None):
+        """Generate detailed monthly report in PDF format"""
+        try:
+            if not month_name:
+                month_name = calendar.month_name[datetime.now().month]
+            if not year:
+                year = str(datetime.now().year)
+                
+            month_num = list(calendar.month_name).index(month_name)
+            
+            # Ask user where to save the file
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf")],
+                title="Save Monthly Report",
+                initialname=f"Hospital_Report_{month_name}_{year}.pdf"
+            )
+            
+            if not filename:
+                return
+                
+            # Create PDF document
+            doc = SimpleDocTemplate(filename, pagesize=A4)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            # Title
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=18,
+                spaceAfter=30,
+                alignment=1  # Center alignment
+            )
+            
+            story.append(Paragraph(f"Queen Elizabeth Central Hospital", title_style))
+            story.append(Paragraph(f"Monthly Report - {month_name} {year}", styles['Heading2']))
+            story.append(Spacer(1, 20))
+            
+            # Get data for the selected month
+            start_date = f"{year}-{month_num:02d}-01"
+            if month_num == 12:
+                end_date = f"{int(year)+1}-01-01"
+            else:
+                end_date = f"{year}-{month_num+1:02d}-01"
+                
+            # Patient statistics
+            story.append(Paragraph("Patient Statistics", styles['Heading3']))
+            
+            # New patients registered
+            self.cursor.execute(
+                "SELECT COUNT(*) FROM patients WHERE date_registered >= %s AND date_registered < %s",
+                (start_date, end_date)
+            )
+            new_patients = self.cursor.fetchone()[0]
+            
+            # Total treatments
+            self.cursor.execute(
+                "SELECT COUNT(*) FROM treatments WHERE date >= %s AND date < %s",
+                (start_date, end_date)
+            )
+            total_treatments = self.cursor.fetchone()[0]
+            
+            # Treatments by department
+            self.cursor.execute("""
+                SELECT d.specialization, COUNT(t.treatment_id)
+                FROM treatments t
+                JOIN doctors d ON t.doctor_id = d.id
+                WHERE t.date >= %s AND t.date < %s
+                GROUP BY d.specialization
+                ORDER BY COUNT(t.treatment_id) DESC
+            """, (start_date, end_date))
+            dept_treatments = self.cursor.fetchall()
+            
+            # Patient statistics table
+            patient_data = [
+                ['Metric', 'Value'],
+                ['New Patients Registered', str(new_patients)],
+                ['Total Treatments Given', str(total_treatments)],
+                ['Average Treatments per Day', str(round(total_treatments/30, 1))]
+            ]
+            
+            patient_table = Table(patient_data, colWidths=[3*inch, 2*inch])
+            patient_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(patient_table)
+            story.append(Spacer(1, 20))
+            
+            # Department performance
+            if dept_treatments:
+                story.append(Paragraph("Department Performance", styles['Heading3']))
+                
+                dept_data = [['Department', 'Treatments']]
+                for dept, count in dept_treatments:
+                    dept_data.append([dept or 'General', str(count)])
+                
+                dept_table = Table(dept_data, colWidths=[3*inch, 2*inch])
+                dept_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(dept_table)
+                story.append(Spacer(1, 20))
+            
+            # System usage statistics
+            story.append(Paragraph("System Usage", styles['Heading3']))
+            
+            self.cursor.execute("""
+                SELECT department, COUNT(*) as activity_count
+                FROM logs 
+                WHERE log_date >= %s AND log_date < %s
+                GROUP BY department
+                ORDER BY activity_count DESC
+            """, (start_date, end_date))
+            usage_stats = self.cursor.fetchall()
+            
+            if usage_stats:
+                usage_data = [['Department', 'System Activities']]
+                for dept, count in usage_stats:
+                    usage_data.append([dept, str(count)])
+                
+                usage_table = Table(usage_data, colWidths=[3*inch, 2*inch])
+                usage_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(usage_table)
+            
+            # Footer
+            story.append(Spacer(1, 30))
+            story.append(Paragraph(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+            story.append(Paragraph("Queen Elizabeth Central Hospital - Blantyre, Malawi", styles['Normal']))
+            
+            # Build PDF
+            doc.build(story)
+            
+            messagebox.showinfo(
+                "Report Generated", 
+                f"Monthly report saved successfully!\n\nFile: {filename}\n\nThe report contains:\n"
+                f"• Patient statistics\n• Department performance\n• System usage data"
+            )
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate report: {str(e)}\n\nMake sure you have reportlab installed:\npip install reportlab")
+
+    def show_department_stats(self):
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="Department Statistics", font=("Arial", 20, "bold")).pack(pady=20)
+        
+        # Create a scrollable frame for the statistics
+        stats_frame = customtkinter.CTkScrollableFrame(self.content, width=700, height=400)
+        stats_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        try:
+            # Get patient count by gender
+            self.cursor.execute("SELECT gender, COUNT(*) FROM patients GROUP BY gender")
+            patient_gender_data = self.cursor.fetchall()
+            
+            # Get patient count by blood type
+            self.cursor.execute("SELECT blood_type, COUNT(*) FROM patients GROUP BY blood_type")
+            patient_blood_data = self.cursor.fetchall()
+            
+            # Get treatment count by doctor
+            self.cursor.execute("""
+                SELECT d.firstname, d.lastname, COUNT(t.treatment_id) as treatment_count
+                FROM doctors d
+                LEFT JOIN treatments t ON d.id = t.doctor_id
+                GROUP BY d.id, d.firstname, d.lastname
+                ORDER BY treatment_count DESC
+            """)
+            doctor_treatment_data = self.cursor.fetchall()
+            
+            # Display patient gender statistics
+            gender_frame = customtkinter.CTkFrame(stats_frame)
+            gender_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                gender_frame,
+                text="Patient Gender Distribution",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if patient_gender_data:
+                for gender, count in patient_gender_data:
+                    customtkinter.CTkLabel(
+                        gender_frame,
+                        text=f"{gender.capitalize()}: {count}",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    gender_frame,
+                    text="No patient gender data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+            
+            # Display patient blood type statistics
+            blood_frame = customtkinter.CTkFrame(stats_frame)
+            blood_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                blood_frame,
+                text="Patient Blood Type Distribution",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if patient_blood_data:
+                for blood_type, count in patient_blood_data:
+                    customtkinter.CTkLabel(
+                        blood_frame,
+                        text=f"Blood Type {blood_type}: {count}",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    blood_frame,
+                    text="No patient blood type data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+            
+            # Display doctor treatment statistics
+            doctor_frame = customtkinter.CTkFrame(stats_frame)
+            doctor_frame.pack(fill="x", padx=10, pady=10)
+            customtkinter.CTkLabel(
+                doctor_frame,
+                text="Treatments by Doctor",
+                font=("Arial", 16, "bold")
+            ).pack(pady=10)
+            
+            if doctor_treatment_data:
+                for firstname, lastname, count in doctor_treatment_data:
+                    doctor_name = f"{firstname} {lastname}" if firstname and lastname else "Unknown Doctor"
+                    customtkinter.CTkLabel(
+                        doctor_frame,
+                        text=f"{doctor_name}: {count} treatments",
+                        font=("Arial", 12)
+                    ).pack(pady=2)
+            else:
+                customtkinter.CTkLabel(
+                    doctor_frame,
+                    text="No doctor treatment data available",
+                    font=("Arial", 12)
+                ).pack(pady=2)
+                
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Error loading department statistics: {e}")
+
+    def show_backup_options(self):
+        self.clear_content()
+        customtkinter.CTkLabel(self.content, text="Database Backup & Maintenance", font=("Arial", 20, "bold")).pack(pady=20)
+        backup_frame = customtkinter.CTkFrame(self.content)
+        backup_frame.pack(fill="x", padx=20, pady=10)
+        customtkinter.CTkLabel(backup_frame, text="Database Backup", font=("Arial", 16, "bold")).pack(pady=15)
+        customtkinter.CTkLabel(
+            backup_frame,
+            text="Create a backup of all hospital data including patients, treatments, and user records.",
+            font=("Arial", 12)
+        ).pack(pady=5)
+        customtkinter.CTkButton(
+            backup_frame, text="Create Backup",
+            command=self.create_backup, height=40
+        ).pack(pady=15)
+
+    def create_backup(self):
+        try:
+            # Import required modules
+            import subprocess
+            import os
+            from os.path import expanduser
+            
+            # Create backup directory
+            user_home = expanduser("~")
+            backup_dir = os.path.join(user_home, "hospital_backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            # Generate timestamp for backup file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = os.path.join(backup_dir, f"hospital_db_backup_{timestamp}.sql")
+            
+            # Get database connection details
+            db_config = {
+                'host': 'localhost',
+                'user': 'root',
+                'password': '',
+                'database': 'hospital-management'
+            }
+            
+            # Create backup using mysqldump command
+            dump_command = [
+                'mysqldump',
+                f'--host={db_config["host"]}',
+                f'--user={db_config["user"]}',
+                f'--password={db_config["password"]}',
+                db_config["database"]
+            ]
+            
+            # Execute the mysqldump command and save to file
+            with open(backup_file, 'w') as output_file:
+                process = subprocess.run(
+                    dump_command,
+                    stdout=output_file,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+            # Check if the backup was successful
+            if process.returncode == 0:
+                messagebox.showinfo("Backup Successful", f"Database backup created:\n{backup_file}")
+            else:
+                # If mysqldump failed, try a simple file copy as fallback
+                # This assumes the database file is accessible directly
+                try:
+                    # Try to locate the database file (this is a simplified approach)
+                    # In a real application, you would need to know the exact path
+                    db_file_path = "db/hospital-management.sql"  # Adjust path as needed
+                    if os.path.exists(db_file_path):
+                        import shutil
+                        shutil.copyfile(db_file_path, backup_file)
+                        messagebox.showinfo("Backup Successful", f"Database backup created (using file copy):\n{backup_file}")
+                    else:
+                        raise Exception("Database file not found for backup")
+                except Exception as copy_error:
+                    messagebox.showerror("Backup Error", f"Error creating backup:\n{process.stderr}\n\nFallback error: {copy_error}")
+        except Exception as e:
+            messagebox.showerror("Backup Error", f"Error creating backup: {e}")
+
+    # Keep all your existing methods (show_user_management, show_staff_management, etc.)
     def show_user_management(self):
         self.clear_content()
         customtkinter.CTkLabel(self.content, text="User Management", font=("Arial", 20, "bold")).pack(pady=20)
@@ -564,206 +1217,8 @@ class AdminFrame(customtkinter.CTkFrame):
         except Exception as e:
             messagebox.showerror("Database Error", f"Error loading treatments: {e}")
 
-    def show_system_reports(self):
-        self.clear_content()
-        customtkinter.CTkLabel(self.content, text="System Reports & Analytics", font=("Arial", 20, "bold")).pack(pady=20)
-        reports_frame = customtkinter.CTkFrame(self.content)
-        reports_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        # Monthly statistics
-        monthly_frame = customtkinter.CTkFrame(reports_frame)
-        monthly_frame.pack(fill="x", padx=20, pady=10)
-        customtkinter.CTkLabel(monthly_frame, text="Monthly Statistics", font=("Arial", 16, "bold")).pack(pady=10)
-        customtkinter.CTkButton(
-            monthly_frame, text="Generate Monthly Report",
-            command=self.generate_monthly_report
-        ).pack(pady=10)
-        # Department statistics
-        dept_frame = customtkinter.CTkFrame(reports_frame)
-        dept_frame.pack(fill="x", padx=20, pady=10)
-        customtkinter.CTkLabel(dept_frame, text="Department Activity", font=("Arial", 16, "bold")).pack(pady=10)
-        customtkinter.CTkButton(
-            dept_frame, text="View Department Statistics",
-            command=self.show_department_stats
-        ).pack(pady=10)
-
-    def generate_monthly_report(self):
-        # ...use your existing code for monthly report...
-
-     def show_department_stats(self):
-        self.clear_content()
-        customtkinter.CTkLabel(self.content, text="Department Statistics", font=("Arial", 20, "bold")).pack(pady=20)
-        
-        # Create a scrollable frame for the statistics
-        stats_frame = customtkinter.CTkScrollableFrame(self.content, width=700, height=400)
-        stats_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        try:
-            # Get patient count by gender
-            self.cursor.execute("SELECT gender, COUNT(*) FROM patients GROUP BY gender")
-            patient_gender_data = self.cursor.fetchall()
-            
-            # Get patient count by blood type
-            self.cursor.execute("SELECT blood_type, COUNT(*) FROM patients GROUP BY blood_type")
-            patient_blood_data = self.cursor.fetchall()
-            
-            # Get treatment count by doctor
-            self.cursor.execute("""
-                SELECT d.firstname, d.lastname, COUNT(t.treatment_id) as treatment_count
-                FROM doctors d
-                LEFT JOIN treatments t ON d.id = t.doctor_id
-                GROUP BY d.id, d.firstname, d.lastname
-                ORDER BY treatment_count DESC
-            """)
-            doctor_treatment_data = self.cursor.fetchall()
-            
-            # Display patient gender statistics
-            gender_frame = customtkinter.CTkFrame(stats_frame)
-            gender_frame.pack(fill="x", padx=10, pady=10)
-            customtkinter.CTkLabel(
-                gender_frame,
-                text="Patient Gender Distribution",
-                font=("Arial", 16, "bold")
-            ).pack(pady=10)
-            
-            if patient_gender_data:
-                for gender, count in patient_gender_data:
-                    customtkinter.CTkLabel(
-                        gender_frame,
-                        text=f"{gender.capitalize()}: {count}",
-                        font=("Arial", 12)
-                    ).pack(pady=2)
-            else:
-                customtkinter.CTkLabel(
-                    gender_frame,
-                    text="No patient gender data available",
-                    font=("Arial", 12)
-                ).pack(pady=2)
-            
-            # Display patient blood type statistics
-            blood_frame = customtkinter.CTkFrame(stats_frame)
-            blood_frame.pack(fill="x", padx=10, pady=10)
-            customtkinter.CTkLabel(
-                blood_frame,
-                text="Patient Blood Type Distribution",
-                font=("Arial", 16, "bold")
-            ).pack(pady=10)
-            
-            if patient_blood_data:
-                for blood_type, count in patient_blood_data:
-                    customtkinter.CTkLabel(
-                        blood_frame,
-                        text=f"Blood Type {blood_type}: {count}",
-                        font=("Arial", 12)
-                    ).pack(pady=2)
-            else:
-                customtkinter.CTkLabel(
-                    blood_frame,
-                    text="No patient blood type data available",
-                    font=("Arial", 12)
-                ).pack(pady=2)
-            
-            # Display doctor treatment statistics
-            doctor_frame = customtkinter.CTkFrame(stats_frame)
-            doctor_frame.pack(fill="x", padx=10, pady=10)
-            customtkinter.CTkLabel(
-                doctor_frame,
-                text="Treatments by Doctor",
-                font=("Arial", 16, "bold")
-            ).pack(pady=10)
-            
-            if doctor_treatment_data:
-                for firstname, lastname, count in doctor_treatment_data:
-                    doctor_name = f"{firstname} {lastname}" if firstname and lastname else "Unknown Doctor"
-                    customtkinter.CTkLabel(
-                        doctor_frame,
-                        text=f"{doctor_name}: {count} treatments",
-                        font=("Arial", 12)
-                    ).pack(pady=2)
-            else:
-                customtkinter.CTkLabel(
-                    doctor_frame,
-                    text="No doctor treatment data available",
-                    font=("Arial", 12)
-                ).pack(pady=2)
-                
-        except Exception as e:
-            messagebox.showerror("Database Error", f"Error loading department statistics: {e}")
-
-    def show_backup_options(self):
-        self.clear_content()
-        customtkinter.CTkLabel(self.content, text="Database Backup & Maintenance", font=("Arial", 20, "bold")).pack(pady=20)
-        backup_frame = customtkinter.CTkFrame(self.content)
-        backup_frame.pack(fill="x", padx=20, pady=10)
-        customtkinter.CTkLabel(backup_frame, text="Database Backup", font=("Arial", 16, "bold")).pack(pady=15)
-        customtkinter.CTkLabel(
-            backup_frame,
-            text="Create a backup of all hospital data including patients, treatments, and user records.",
-            font=("Arial", 12)
-        ).pack(pady=5)
-        customtkinter.CTkButton(
-            backup_frame, text="Create Backup",
-            command=self.create_backup, height=40
-        ).pack(pady=15)
-
-    def create_backup(self):
-        try:
-            # Import required modules
-            import subprocess
-            import os
-            from os.path import expanduser
-            
-            # Create backup directory
-            user_home = expanduser("~")
-            backup_dir = os.path.join(user_home, "hospital_backups")
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            # Generate timestamp for backup file
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = os.path.join(backup_dir, f"hospital_db_backup_{timestamp}.sql")
-            
-            # Get database connection details
-            db_config = {
-                'host': 'localhost',
-                'user': 'root',
-                'password': '',
-                'database': 'hospital-management'
-            }
-            
-            # Create backup using mysqldump command
-            dump_command = [
-                'mysqldump',
-                f'--host={db_config["host"]}',
-                f'--user={db_config["user"]}',
-                f'--password={db_config["password"]}',
-                db_config["database"]
-            ]
-            
-            # Execute the mysqldump command and save to file
-            with open(backup_file, 'w') as output_file:
-                process = subprocess.run(
-                    dump_command,
-                    stdout=output_file,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                
-            # Check if the backup was successful
-            if process.returncode == 0:
-                messagebox.showinfo("Backup Successful", f"Database backup created:\n{backup_file}")
-            else:
-                # If mysqldump failed, try a simple file copy as fallback
-                # This assumes the database file is accessible directly
-                try:
-                    # Try to locate the database file (this is a simplified approach)
-                    # In a real application, you would need to know the exact path
-                    db_file_path = "db/hospital-management.sql"  # Adjust path as needed
-                    if os.path.exists(db_file_path):
-                        import shutil
-                        shutil.copyfile(db_file_path, backup_file)
-                        messagebox.showinfo("Backup Successful", f"Database backup created (using file copy):\n{backup_file}")
-                    else:
-                        raise Exception("Database file not found for backup")
-                except Exception as copy_error:
-                    messagebox.showerror("Backup Error", f"Error creating backup:\n{process.stderr}\n\nFallback error: {copy_error}")
-        except Exception as e:
-            messagebox.showerror("Backup Error", f"Error creating backup: {e}")
+    def logout(self):
+        self.conn.close()
+        self.master.destroy()
+        if self.on_logout:
+            self.on_logout()
