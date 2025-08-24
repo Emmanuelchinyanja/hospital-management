@@ -519,9 +519,9 @@ class NurseFrame(customtkinter.CTkFrame):
             
             if today_emergencies:
                 msg = "EMERGENCY ALERT - TODAY'S CASES!\n\n"
-                for patient_id, name, note, date, author in today_emergencies:
+                for patient_id, name, notes, date, author in today_emergencies:
                     msg += f"Patient: {name} (ID: {patient_id})\n"
-                    msg += f"Notes: {note}\n"
+                    msg += f"Notes: {notes}\n"
                     msg += f"Time: {date.strftime('%H:%M')}\n"
                     msg += f"Reported by: {author}\n"
                     msg += "-" * 40 + "\n\n"
@@ -1044,10 +1044,10 @@ class NurseFrame(customtkinter.CTkFrame):
         )
         patient_combo.pack(anchor="w", padx=20, pady=(0, 20))
 
-        # Note input
+        # Notes input
         customtkinter.CTkLabel(
             form_frame,
-            text="Write Note:",
+            text="Write Notes:",
             font=("Arial", 14, "bold"),
             text_color=self.colors['text_dark']
         ).pack(anchor="w", padx=20, pady=(10, 5))
@@ -1072,11 +1072,11 @@ class NurseFrame(customtkinter.CTkFrame):
         emergency_check.pack(anchor="w", padx=20, pady=10)
 
         # Save button
-        def save_note():
+        def save_notes():
             selection = patient_combo.get()
-            note = notes_text.get("1.0", "end-1c").strip()
+            notes = notes_text.get("1.0", "end-1c").strip()
             
-            if not selection or not note:
+            if not selection or not notes:
                 messagebox.showerror("Error", "Please select a patient and write a note")
                 return
             
@@ -1086,33 +1086,33 @@ class NurseFrame(customtkinter.CTkFrame):
                 self.cursor.execute("""
                     INSERT INTO patient_notes (patient_id, notes, author, date, emergency)
                     VALUES (%s, %s, %s, NOW(), %s)
-                """, (patient_id, note, self.username, emergency_var.get()))
+                """, (patient_id, notes, self.username, emergency_var.get()))
                 
                 self.conn.commit()
                 
                 if emergency_var.get():
-                    messagebox.showwarning("Emergency Note Saved", 
-                        "EMERGENCY note saved successfully!\nAll medical staff will be notified.")
+                    messagebox.showwarning("Emergency Notes Saved", 
+                        "EMERGENCY notes saved successfully!\nAll medical staff will be notified.")
                 else:
-                    messagebox.showinfo("Success", "Note saved successfully!")
+                    messagebox.showinfo("Success", "Notes saved successfully!")
                 
                 # Clear form
                 notes_text.delete("1.0", "end")
                 emergency_var.set(False)
                 
                 try:
-                    log_action(self.username, "Nurse", f"Added {'EMERGENCY' if emergency_var.get() else ''} note for patient ID: {patient_id}")
+                    log_action(self.username, "Nurse", f"Added {'EMERGENCY' if emergency_var.get() else ''} notes for patient ID: {patient_id}")
                 except Exception as log_err:
                     print(f"Logging error: {log_err}")
                     
             except Exception as e:
-                print(f"Error saving note: {e}")
-                messagebox.showerror("Error", f"Error saving note: {str(e)}")
+                print(f"Error saving notes: {e}")
+                messagebox.showerror("Error", f"Error saving notes: {str(e)}")
 
         save_btn = customtkinter.CTkButton(
             form_frame,
-            text="Save Note",
-            command=save_note,
+            text="Save Notes",
+            command=save_notes,
             height=45,
             width=200,
             font=("Arial", 14, "bold"),
@@ -1189,7 +1189,7 @@ class NurseFrame(customtkinter.CTkFrame):
                 scroll_frame = customtkinter.CTkScrollableFrame(emergency_frame, height=300)
                 scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-                for note, date, patient_name, patient_id, author in emergencies:
+                for notes, date, patient_name, patient_id, author in emergencies:
                     import datetime
                     is_today = date.date() == datetime.date.today()
                     case_color = self.colors['danger'] if is_today else "#e67e22"
@@ -1215,7 +1215,7 @@ class NurseFrame(customtkinter.CTkFrame):
 
                     customtkinter.CTkLabel(
                         case_frame,
-                        text=note,
+                        text=notes,
                         font=("Arial", 12),
                         text_color="white",
                         wraplength=500,

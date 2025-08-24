@@ -467,7 +467,7 @@ class DoctorFrame(customtkinter.CTkFrame):
             self.cursor.execute("""
                 SELECT p.patient_id, p.name, p.gender, p.blood_type, p.date_registered,
                        COALESCE(MAX(t.date), 'Never treated') as last_treatment,
-                       COALESCE(pn.note, 'No notes') as recent_note
+                       COALESCE(pn.notes, 'No notes') as recent_notes
                 FROM patients p
                 LEFT JOIN treatments t ON p.patient_id = t.patient_id
                 LEFT JOIN patient_notes pn ON p.patient_id = pn.patient_id AND DATE(pn.date) = CURDATE()
@@ -475,7 +475,7 @@ class DoctorFrame(customtkinter.CTkFrame):
                     SELECT DISTINCT patient_id FROM treatments 
                     WHERE DATE(date) = CURDATE()
                 )
-                GROUP BY p.patient_id, p.name, p.gender, p.blood_type, p.date_registered, pn.note
+                GROUP BY p.patient_id, p.name, p.gender, p.blood_type, p.date_registered, pn.notes
                 ORDER BY last_treatment DESC, p.date_registered ASC
             """)
             pending = self.cursor.fetchall()
@@ -1139,7 +1139,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         try:
             # Get all emergency notes
             self.cursor.execute(
-                """SELECT n.patient_id, p.name, n.note, n.date, n.author
+                """SELECT n.patient_id, p.name, n.notes, n.date, n.author
                    FROM patient_notes n
                    JOIN patients p ON n.patient_id = p.patient_id
                    WHERE n.emergency=1
@@ -1185,7 +1185,7 @@ class DoctorFrame(customtkinter.CTkFrame):
             emergency_scroll = customtkinter.CTkScrollableFrame(emergency_frame)
             emergency_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
             
-            for patient_id, name, note, date, author in emergencies:
+            for patient_id, name, notes, date, author in emergencies:
                 is_today = date.date() == datetime.date.today()
                 card_color = self.colors['danger'] if is_today else "#e67e22"
                 
@@ -1210,7 +1210,7 @@ class DoctorFrame(customtkinter.CTkFrame):
                 
                 customtkinter.CTkLabel(
                     emergency_card,
-                    text=f"{note}",
+                    text=f"{notes}",
                     font=("Arial", 12),
                     text_color="white",
                     wraplength=500
@@ -1529,7 +1529,7 @@ class DoctorFrame(customtkinter.CTkFrame):
         """Enhanced emergency alert system"""
         try:
             self.cursor.execute(
-                """SELECT n.patient_id, p.name, n.note, n.date, n.author
+                """SELECT n.patient_id, p.name, n.notes, n.date, n.author
                    FROM patient_notes n
                    JOIN patients p ON n.patient_id = p.patient_id
                    WHERE n.emergency=1 AND DATE(n.date) = CURDATE()
@@ -1539,9 +1539,9 @@ class DoctorFrame(customtkinter.CTkFrame):
             
             if today_emergencies:
                 msg = "EMERGENCY ALERT - TODAY'S CASES!\n\n"
-                for patient_id, name, note, date, author in today_emergencies:
+                for patient_id, name, notes, date, author in today_emergencies:
                     msg += f"Patient: {name} (ID: {patient_id})\n"
-                    msg += f"Note: {note}\n"
+                    msg += f"Notes: {notes}\n"
                     msg += f"Time: {date.strftime('%H:%M')}\n"
                     msg += f"Reported by: {author}\n"
                     msg += "-" * 50 + "\n\n"
