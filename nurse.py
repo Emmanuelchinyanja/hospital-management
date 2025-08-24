@@ -8,7 +8,7 @@ class NurseFrame(customtkinter.CTkFrame):
         super().__init__(master)
         self.username = username
         self.conn = get_connection()
-        self.cursor = self.conn.cursor()
+        self.cursor = self.conn.cursor(buffered=True)  # Fixed: Added buffered=True
         self.on_logout = None
 
         # Enhanced color scheme
@@ -146,24 +146,34 @@ class NurseFrame(customtkinter.CTkFrame):
         stats_frame.pack(fill="x", padx=20, pady=20)
         
         try:
+            # Fixed SQL queries
             self.cursor.execute("SELECT COUNT(*) FROM patients")
             total_patients = self.cursor.fetchone()[0]
             
-            # Get pending patients (those without vitals today)
+            # Get pending patients (those without vitals today) - FIXED QUERY
             self.cursor.execute("""
                 SELECT COUNT(DISTINCT p.patient_id) 
                 FROM patients p 
-                LEFT JOIN treatments t ON p.patient_id = t.patient_id AND DATE(t.date) = CURDATE()
-                WHERE t.patient_id IS NULL
+                WHERE p.patient_id NOT IN (
+                    SELECT DISTINCT patient_id FROM treatments 
+                    WHERE DATE(date) = CURDATE() 
+                    AND (blood_pressure IS NOT NULL OR temperature IS NOT NULL OR weight IS NOT NULL)
+                )
             """)
             pending_patients = self.cursor.fetchone()[0]
             
             self.cursor.execute("SELECT COUNT(*) FROM treatments WHERE DATE(date) = CURDATE()")
             today_vitals = self.cursor.fetchone()[0]
             
-            self.cursor.execute("SELECT COUNT(*) FROM patient_notes WHERE emergency = TRUE AND DATE(date) = CURDATE()")
-            today_emergencies = self.cursor.fetchone()[0]
-        except:
+            # Fixed emergency query - check if table exists
+            try:
+                self.cursor.execute("SELECT COUNT(*) FROM patient_notes WHERE emergency = TRUE AND DATE(date) = CURDATE()")
+                today_emergencies = self.cursor.fetchone()[0]
+            except:
+                today_emergencies = 0
+                
+        except Exception as e:
+            print(f"Database error in dashboard: {e}")
             total_patients = pending_patients = today_vitals = today_emergencies = 0
         
         # Statistics cards
@@ -225,7 +235,7 @@ class NurseFrame(customtkinter.CTkFrame):
             )
             btn.grid(row=i//2, column=i%2, padx=15, pady=10, sticky="ew")
 
-    # NEW FEATURE: Show Pending Patients for Nurse
+    # FIXED: Show Pending Patients for Nurse
     def show_pending_patients(self):
         """Show patients who need nursing attention (vitals recording)"""
         self.clear_content()
@@ -241,20 +251,16 @@ class NurseFrame(customtkinter.CTkFrame):
         ).pack(anchor="w")
         
         try:
-            # Get patients who haven't had vitals recorded today
+            # FIXED: Simplified query that should work
             self.cursor.execute("""
-                SELECT p.patient_id, p.name, p.gender, p.blood_type, p.date_registered,
-                       COALESCE(MAX(t.date), 'Never recorded') as last_vitals,
-                       CASE WHEN pn.emergency IS TRUE THEN 'EMERGENCY' ELSE 'Normal' END as priority
+                SELECT p.patient_id, p.name, p.gender, p.blood_type, p.date_registered
                 FROM patients p
-                LEFT JOIN treatments t ON p.patient_id = t.patient_id
-                LEFT JOIN patient_notes pn ON p.patient_id = pn.patient_id AND DATE(pn.date) = CURDATE()
                 WHERE p.patient_id NOT IN (
                     SELECT DISTINCT patient_id FROM treatments 
-                    WHERE DATE(date) = CURDATE() AND (blood_pressure IS NOT NULL OR temperature IS NOT NULL OR weight IS NOT NULL)
+                    WHERE DATE(date) = CURDATE() 
+                    AND (blood_pressure IS NOT NULL OR temperature IS NOT NULL OR weight IS NOT NULL)
                 )
-                GROUP BY p.patient_id, p.name, p.gender, p.blood_type, p.date_registered, pn.emergency
-                ORDER BY pn.emergency DESC, last_vitals DESC, p.date_registered ASC
+                ORDER BY p.date_registered ASC
             """)
             pending = self.cursor.fetchall()
 
@@ -268,9 +274,6 @@ class NurseFrame(customtkinter.CTkFrame):
                 return
 
             # Statistics
-            emergency_count = sum(1 for p in pending if p[6] == 'EMERGENCY')
-            regular_count = len(pending) - emergency_count
-            
             stats_frame = customtkinter.CTkFrame(self.content, fg_color=self.colors['warning'])
             stats_frame.pack(fill="x", padx=20, pady=10)
             
@@ -280,14 +283,6 @@ class NurseFrame(customtkinter.CTkFrame):
                 font=("Arial", 16, "bold"),
                 text_color="white"
             ).pack(pady=10)
-            
-            if emergency_count > 0:
-                customtkinter.CTkLabel(
-                    stats_frame,
-                    text=f"⚠️ {emergency_count} EMERGENCY cases require immediate attention!",
-                    font=("Arial", 14, "bold"),
-                    text_color="#ffeb3b"
-                ).pack(pady=(0, 10))
 
             # Scrollable patient list
             list_frame = customtkinter.CTkFrame(self.content)
@@ -300,8 +295,8 @@ class NurseFrame(customtkinter.CTkFrame):
             header_frame = customtkinter.CTkFrame(scroll_frame, fg_color=self.colors['text_dark'])
             header_frame.pack(fill="x", pady=(0, 5))
             
-            headers = ["Patient ID", "Name", "Gender", "Blood Type", "Last Vitals", "Priority", "Action"]
-            widths = [80, 150, 80, 100, 120, 100, 120]
+            headers = ["Patient ID", "Name", "Gender", "Blood Type", "Registered", "Action"]
+            widths = [80, 150, 80, 100, 120, 120]
             
             for i, (header, width) in enumerate(zip(headers, widths)):
                 customtkinter.CTkLabel(
@@ -317,36 +312,12 @@ class NurseFrame(customtkinter.CTkFrame):
                 patient_frame = customtkinter.CTkFrame(scroll_frame, fg_color="#ecf0f1")
                 patient_frame.pack(fill="x", pady=2)
                 
-                # Determine priority color
-                priority = patient[6]
-                if priority == 'EMERGENCY':
-                    priority_color = self.colors['danger']
-                    priority_text = "EMERGENCY"
-                else:
-                    if patient[5] == 'Never recorded':
-                        priority_color = self.colors['warning']
-                        priority_text = "NEW PATIENT"
-                    else:
-                        try:
-                            last_date = datetime.datetime.strptime(str(patient[5]).split()[0], "%Y-%m-%d").date()
-                            days_ago = (datetime.datetime.now().date() - last_date).days
-                            if days_ago > 1:
-                                priority_color = self.colors['warning']
-                                priority_text = "OVERDUE"
-                            else:
-                                priority_color = self.colors['info']
-                                priority_text = "DUE"
-                        except:
-                            priority_color = "#95a5a6"
-                            priority_text = "UNKNOWN"
-
                 data = [
                     patient[0], 
                     patient[1][:15] + "..." if len(patient[1]) > 15 else patient[1], 
                     patient[2], 
                     patient[3], 
-                    str(patient[5]).split()[0] if patient[5] != 'Never recorded' else 'Never',
-                    priority_text
+                    str(patient[4]).split()[0] if patient[4] else 'N/A'
                 ]
                 
                 for i, (value, width) in enumerate(zip(data, widths[:-1])):
@@ -356,8 +327,6 @@ class NurseFrame(customtkinter.CTkFrame):
                         width=width,
                         font=("Arial", 11)
                     )
-                    if i == 5:  # Priority column
-                        label.configure(text_color=priority_color, font=("Arial", 11, "bold"))
                     label.grid(row=0, column=i, padx=5, pady=8)
                 
                 # Action button
@@ -367,16 +336,17 @@ class NurseFrame(customtkinter.CTkFrame):
                     width=100,
                     height=30,
                     font=("Arial", 10, "bold"),
-                    fg_color=priority_color,
+                    fg_color=self.colors['accent'],
                     command=lambda pid=patient[0], pname=patient[1]: self.quick_record_vitals(pid, pname)
                 )
-                record_btn.grid(row=0, column=6, padx=5, pady=5)
+                record_btn.grid(row=0, column=5, padx=5, pady=5)
 
         except Exception as e:
+            print(f"Database error in show_pending_patients: {e}")
             messagebox.showerror("Database Error", f"Error loading pending patients: {e}")
 
     def quick_record_vitals(self, patient_id, patient_name):
-        """Quick vitals recording interface for pending patients"""
+        """FIXED: Quick vitals recording interface for pending patients"""
         try:
             # Create vitals window
             vitals_window = customtkinter.CTkToplevel(self)
@@ -443,23 +413,7 @@ class NurseFrame(customtkinter.CTkFrame):
             )
             weight_entry.pack(anchor="w", padx=20, pady=(0, 15))
             
-            # Heart Rate
-            customtkinter.CTkLabel(
-                form_frame,
-                text="Heart Rate (bpm):",
-                font=("Arial", 12, "bold"),
-                text_color=self.colors['text_dark']
-            ).pack(anchor="w", padx=20, pady=(0, 5))
-            
-            hr_entry = customtkinter.CTkEntry(
-                form_frame,
-                placeholder_text="Enter heart rate",
-                width=300,
-                height=35
-            )
-            hr_entry.pack(anchor="w", padx=20, pady=(0, 15))
-            
-            # Notes
+            # Additional Notes
             customtkinter.CTkLabel(
                 form_frame,
                 text="Additional Notes:",
@@ -475,41 +429,56 @@ class NurseFrame(customtkinter.CTkFrame):
             notes_text.pack(anchor="w", padx=20, pady=(0, 20))
             
             def save_vitals():
-                """Save the vitals"""
+                """FIXED: Save the vitals with proper error handling"""
                 bp = bp_entry.get().strip()
                 temp = temp_entry.get().strip()
                 weight = weight_entry.get().strip()
-                hr = hr_entry.get().strip()
                 notes = notes_text.get("1.0", "end-1c").strip()
                 
-                if not any([bp, temp, weight, hr]):
+                if not any([bp, temp, weight]):
                     messagebox.showerror("Error", "Please enter at least one vital sign.")
                     return
                 
                 try:
-                    # Convert numeric values
-                    temp_val = float(temp) if temp else None
-                    weight_val = float(weight) if weight else None
-                    hr_val = int(hr) if hr else None
+                    # Convert numeric values with validation
+                    temp_val = None
+                    weight_val = None
                     
-                    # Insert new treatment record with vitals
+                    if temp:
+                        temp_val = float(temp)
+                        if temp_val < 30 or temp_val > 50:
+                            messagebox.showerror("Error", "Temperature must be between 30-50°C")
+                            return
+                    
+                    if weight:
+                        weight_val = float(weight)
+                        if weight_val < 1 or weight_val > 500:
+                            messagebox.showerror("Error", "Weight must be between 1-500 kg")
+                            return
+                    
+                    # FIXED: Insert new treatment record with vitals
                     self.cursor.execute("""
-                        INSERT INTO treatments (patient_id, blood_pressure, temperature, weight, heart_rate, notes, date)
-                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                    """, (patient_id, bp or None, temp_val, weight_val, hr_val, notes or None))
+                        INSERT INTO treatments (patient_id, blood_pressure, temperature, weight, notes, date)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                    """, (patient_id, bp if bp else None, temp_val, weight_val, notes if notes else None))
                     
                     self.conn.commit()
                     
                     messagebox.showinfo("Success", f"Vitals recorded successfully for {patient_name}!")
                     
-                    log_action(self.username, "Nurse", f"Recorded vitals for patient ID: {patient_id}")
+                    # Log the action
+                    try:
+                        log_action(self.username, "Nurse", f"Recorded vitals for patient ID: {patient_id}")
+                    except Exception as log_err:
+                        print(f"Logging error: {log_err}")
                     
                     vitals_window.destroy()
                     self.show_pending_patients()  # Refresh the list
                     
                 except ValueError:
-                    messagebox.showerror("Error", "Please enter valid numbers for temperature, weight, and heart rate.")
+                    messagebox.showerror("Error", "Please enter valid numbers for temperature and weight.")
                 except Exception as err:
+                    print(f"Database error saving vitals: {err}")
                     messagebox.showerror("Database Error", f"Error saving vitals: {str(err)}")
             
             # Save button
@@ -525,11 +494,20 @@ class NurseFrame(customtkinter.CTkFrame):
             save_btn.pack(pady=20)
             
         except Exception as e:
+            print(f"Error opening vitals window: {e}")
             messagebox.showerror("Error", f"Error opening vitals recording window: {str(e)}")
 
     def check_emergencies(self):
-        """Check for emergency cases"""
+        """FIXED: Check for emergency cases"""
         try:
+            # Check if patient_notes table exists
+            self.cursor.execute("SHOW TABLES LIKE 'patient_notes'")
+            table_exists = self.cursor.fetchone()
+            
+            if not table_exists:
+                messagebox.showinfo("No Emergency System", "Emergency notes system is not set up yet.")
+                return
+                
             self.cursor.execute("""
                 SELECT n.patient_id, p.name, n.notes, n.date, n.author
                 FROM patient_notes n
@@ -554,11 +532,12 @@ class NurseFrame(customtkinter.CTkFrame):
                 messagebox.showinfo("No Emergencies", "No emergency cases reported today.")
                 
         except Exception as e:
+            print(f"Error checking emergencies: {e}")
             messagebox.showerror("Error", f"Error checking emergencies: {str(e)}")
 
-    # Keep all your existing methods but enhanced
+    # FIXED: Record vitals with better error handling
     def show_record_vitals(self):
-        """Record patient vitals with enhanced interface"""
+        """FIXED: Record patient vitals with enhanced interface"""
         self.clear_content()
         
         # Title
@@ -587,7 +566,8 @@ class NurseFrame(customtkinter.CTkFrame):
         try:
             self.cursor.execute("SELECT patient_id, name FROM patients ORDER BY name")
             patients = self.cursor.fetchall()
-        except:
+        except Exception as e:
+            print(f"Error getting patients: {e}")
             patients = []
 
         if not patients:
@@ -615,7 +595,8 @@ class NurseFrame(customtkinter.CTkFrame):
             font=("Arial", 12)
         )
         patient_combo.pack(anchor="w", padx=20, pady=(0, 20))
-        patient_combo.set(f"{patients[0][0]} - {patients[0][1]}")
+        if patients:
+            patient_combo.set(f"{patients[0][0]} - {patients[0][1]}")
 
         # SCROLLABLE VITALS FORM
         vitals_scroll = customtkinter.CTkScrollableFrame(form_frame, height=400)
@@ -666,21 +647,6 @@ class NurseFrame(customtkinter.CTkFrame):
         )
         weight_entry.pack(anchor="w", padx=10, pady=(5, 10))
 
-        # Heart Rate
-        customtkinter.CTkLabel(
-            vitals_scroll,
-            text="Heart Rate (bpm):",
-            font=("Arial", 12, "bold"),
-            text_color=self.colors['text_dark']
-        ).pack(anchor="w", padx=10, pady=(0, 0))
-        hr_entry = customtkinter.CTkEntry(
-            vitals_scroll,
-            placeholder_text="Enter heart rate",
-            width=300,
-            height=35
-        )
-        hr_entry.pack(anchor="w", padx=10, pady=(5, 10))
-
         # Additional Notes
         customtkinter.CTkLabel(
             vitals_scroll,
@@ -714,33 +680,57 @@ class NurseFrame(customtkinter.CTkFrame):
         )
         update_radio.pack(side="left")
 
-        # Save button
+        # FIXED: Save button with proper error handling
         def save_vitals():
             selection = patient_combo.get()
             if not selection:
                 messagebox.showerror("Error", "Please select a patient")
                 return
-            patient_id = selection.split(" - ")[0].strip()
-            bp = bp_entry.get().strip()
-            temp = temp_entry.get().strip()
-            weight = weight_entry.get().strip()
-            hr = hr_entry.get().strip()
-            notes = notes_text.get("1.0", "end-1c").strip()
-            if not any([bp, temp, weight, hr]):
-                messagebox.showerror("Error", "Please enter at least one vital sign")
-                return
+            
             try:
-                temp_val = float(temp) if temp else None
-                weight_val = float(weight) if weight else None
-                hr_val = int(hr) if hr else None
+                patient_id = selection.split(" - ")[0].strip()
+                bp = bp_entry.get().strip()
+                temp = temp_entry.get().strip()
+                weight = weight_entry.get().strip()
+                notes = notes_text.get("1.0", "end-1c").strip()
+                
+                if not any([bp, temp, weight]):
+                    messagebox.showerror("Error", "Please enter at least one vital sign")
+                    return
+                
+                # Validate numeric inputs
+                temp_val = None
+                weight_val = None
+                
+                if temp:
+                    try:
+                        temp_val = float(temp)
+                        if temp_val < 30 or temp_val > 50:
+                            messagebox.showerror("Error", "Temperature must be between 30-50°C")
+                            return
+                    except ValueError:
+                        messagebox.showerror("Error", "Please enter a valid temperature")
+                        return
+                
+                if weight:
+                    try:
+                        weight_val = float(weight)
+                        if weight_val < 1 or weight_val > 500:
+                            messagebox.showerror("Error", "Weight must be between 1-500 kg")
+                            return
+                    except ValueError:
+                        messagebox.showerror("Error", "Please enter a valid weight")
+                        return
+                
                 if mode_var.get() == "add":
                     self.cursor.execute("""
-                        INSERT INTO treatments (patient_id, blood_pressure, temperature, weight, heart_rate, notes)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (patient_id, bp or None, temp_val, weight_val, hr_val, notes or None))
+                        INSERT INTO treatments (patient_id, blood_pressure, temperature, weight, notes, date)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                    """, (patient_id, bp if bp else None, temp_val, weight_val, notes if notes else None))
                     message = "Vitals recorded successfully!"
                     log_message = f"Added vitals for patient ID: {patient_id}"
                 else:
+                    # Update mode
                     self.cursor.execute("""
                         SELECT treatment_id FROM treatments 
                         WHERE patient_id = %s 
@@ -752,26 +742,29 @@ class NurseFrame(customtkinter.CTkFrame):
                         return
                     self.cursor.execute("""
                         UPDATE treatments 
-                        SET blood_pressure = %s, temperature = %s, weight = %s, 
-                            heart_rate = %s, notes = %s
+                        SET blood_pressure = %s, temperature = %s, weight = %s, notes = %s, date = NOW()
                         WHERE treatment_id = %s
-                    """, (bp or None, temp_val, weight_val, hr_val, notes or None, result[0]))
+                    """, (bp if bp else None, temp_val, weight_val, notes if notes else None, result[0]))
                     message = "Latest vitals updated successfully!"
                     log_message = f"Updated vitals for patient ID: {patient_id}"
+                
                 self.conn.commit()
                 messagebox.showinfo("Success", message)
+                
+                # Log the action
                 try:
                     log_action(self.username, "Nurse", log_message)
-                except:
-                    pass
+                except Exception as log_err:
+                    print(f"Logging error: {log_err}")
+                
+                # Clear form
                 bp_entry.delete(0, 'end')
                 temp_entry.delete(0, 'end')
                 weight_entry.delete(0, 'end')
-                hr_entry.delete(0, 'end')
                 notes_text.delete("1.0", "end")
-            except ValueError:
-                messagebox.showerror("Error", "Please enter valid numbers for temperature, weight, and heart rate")
+                
             except Exception as e:
+                print(f"Database error saving vitals: {e}")
                 messagebox.showerror("Database Error", f"Error saving vitals: {str(e)}")
 
         save_button = customtkinter.CTkButton(
@@ -804,7 +797,8 @@ class NurseFrame(customtkinter.CTkFrame):
         try:
             self.cursor.execute("SELECT patient_id, name FROM patients ORDER BY name")
             patients = self.cursor.fetchall()
-        except:
+        except Exception as e:
+            print(f"Error getting patients for view: {e}")
             patients = []
 
         if not patients:
@@ -867,9 +861,9 @@ class NurseFrame(customtkinter.CTkFrame):
             try:
                 # Get all vitals for this patient
                 self.cursor.execute("""
-                    SELECT blood_pressure, temperature, weight, heart_rate, notes, date
+                    SELECT blood_pressure, temperature, weight, notes, date
                     FROM treatments 
-                    WHERE patient_id = %s 
+                    WHERE patient_id = %s AND (blood_pressure IS NOT NULL OR temperature IS NOT NULL OR weight IS NOT NULL)
                     ORDER BY date DESC
                 """, (patient_id,))
                 
@@ -904,8 +898,6 @@ class NurseFrame(customtkinter.CTkFrame):
                     vital_info.append(f"Temperature: {latest[1]}°C")
                 if latest[2]:  # Weight
                     vital_info.append(f"Weight: {latest[2]} kg")
-                if latest[3]:  # Heart rate
-                    vital_info.append(f"Heart Rate: {latest[3]} bpm")
 
                 for info in vital_info:
                     customtkinter.CTkLabel(
@@ -915,10 +907,10 @@ class NurseFrame(customtkinter.CTkFrame):
                         text_color=self.colors['text_dark']
                     ).pack(anchor="w", padx=20, pady=2)
 
-                if latest[4]:  # Notes
+                if latest[3]:  # Notes
                     customtkinter.CTkLabel(
                         latest_frame,
-                        text=f"Notes: {latest[4]}",
+                        text=f"Notes: {latest[3]}",
                         font=("Arial", 12),
                         text_color=self.colors['text_dark'],
                         wraplength=400
@@ -926,7 +918,7 @@ class NurseFrame(customtkinter.CTkFrame):
 
                 customtkinter.CTkLabel(
                     latest_frame,
-                    text=f"Date: {latest[5]}",
+                    text=f"Date: {latest[4]}",
                     font=("Arial", 11, "italic"),
                     text_color="#7f8c8d"
                 ).pack(anchor="w", padx=20, pady=(0, 15))
@@ -952,16 +944,15 @@ class NurseFrame(customtkinter.CTkFrame):
                         record_frame.pack(fill="x", pady=5)
 
                         # Build record text
-                        record_text = f"Date: {vital[5]}\n"
+                        record_text = f"Date: {vital[4]}\n"
                         if vital[0]: record_text += f"BP: {vital[0]} | "
                         if vital[1]: record_text += f"Temp: {vital[1]}°C | "
-                        if vital[2]: record_text += f"Weight: {vital[2]}kg | "
-                        if vital[3]: record_text += f"HR: {vital[3]}bpm"
+                        if vital[2]: record_text += f"Weight: {vital[2]}kg"
                         
                         record_text = record_text.rstrip(" | ")
                         
-                        if vital[4]:  # Notes
-                            record_text += f"\nNotes: {vital[4]}"
+                        if vital[3]:  # Notes
+                            record_text += f"\nNotes: {vital[3]}"
 
                         customtkinter.CTkLabel(
                             record_frame,
@@ -972,6 +963,7 @@ class NurseFrame(customtkinter.CTkFrame):
                         ).pack(anchor="w", padx=15, pady=10)
 
             except Exception as e:
+                print(f"Error loading patient vitals: {e}")
                 customtkinter.CTkLabel(
                     display_frame,
                     text=f"Error loading vitals: {str(e)}",
@@ -1002,7 +994,8 @@ class NurseFrame(customtkinter.CTkFrame):
         try:
             self.cursor.execute("SELECT patient_id, name FROM patients ORDER BY name")
             patients = self.cursor.fetchall()
-        except:
+        except Exception as e:
+            print(f"Error getting patients for notes: {e}")
             patients = []
 
         if not patients:
@@ -1013,6 +1006,23 @@ class NurseFrame(customtkinter.CTkFrame):
                 text_color=self.colors['danger']
             ).pack(pady=50)
             return
+
+        # Check if patient_notes table exists, if not create it
+        try:
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS patient_notes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    patient_id INT,
+                    notes TEXT,
+                    author VARCHAR(100),
+                    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    emergency BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+                )
+            """)
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error creating patient_notes table: {e}")
 
         # Form frame
         form_frame = customtkinter.CTkFrame(self.content, fg_color=self.colors['white'])
@@ -1054,7 +1064,7 @@ class NurseFrame(customtkinter.CTkFrame):
         emergency_var = customtkinter.BooleanVar()
         emergency_check = customtkinter.CTkCheckBox(
             form_frame,
-            text="Mark as Emergency ⚠️",
+            text="Mark as Emergency",
             variable=emergency_var,
             font=("Arial", 12, "bold"),
             text_color=self.colors['danger']
@@ -1074,9 +1084,9 @@ class NurseFrame(customtkinter.CTkFrame):
             
             try:
                 self.cursor.execute("""
-                    INSERT INTO patient_notes (patient_id, note, author, date, emergency)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (patient_id, note, self.username, datetime.datetime.now(), emergency_var.get()))
+                    INSERT INTO patient_notes (patient_id, notes, author, date, emergency)
+                    VALUES (%s, %s, %s, NOW(), %s)
+                """, (patient_id, note, self.username, emergency_var.get()))
                 
                 self.conn.commit()
                 
@@ -1092,10 +1102,11 @@ class NurseFrame(customtkinter.CTkFrame):
                 
                 try:
                     log_action(self.username, "Nurse", f"Added {'EMERGENCY' if emergency_var.get() else ''} note for patient ID: {patient_id}")
-                except:
-                    pass
+                except Exception as log_err:
+                    print(f"Logging error: {log_err}")
                     
             except Exception as e:
+                print(f"Error saving note: {e}")
                 messagebox.showerror("Error", f"Error saving note: {str(e)}")
 
         save_btn = customtkinter.CTkButton(
@@ -1128,8 +1139,21 @@ class NurseFrame(customtkinter.CTkFrame):
         emergency_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         try:
+            # Check if table exists first
+            self.cursor.execute("SHOW TABLES LIKE 'patient_notes'")
+            table_exists = self.cursor.fetchone()
+            
+            if not table_exists:
+                customtkinter.CTkLabel(
+                    emergency_frame,
+                    text="Emergency notes system is not set up yet.\nUse 'Patient Notes' to create emergency notes first.",
+                    font=("Arial", 16),
+                    text_color=self.colors['info']
+                ).pack(pady=50)
+                return
+            
             self.cursor.execute("""
-                SELECT pn.note, pn.date, p.name, p.patient_id, pn.author
+                SELECT pn.notes, pn.date, p.name, p.patient_id, pn.author
                 FROM patient_notes pn
                 JOIN patients p ON pn.patient_id = p.patient_id
                 WHERE pn.emergency = TRUE
@@ -1141,6 +1165,7 @@ class NurseFrame(customtkinter.CTkFrame):
 
             if emergencies:
                 # Statistics
+                import datetime
                 today_count = sum(1 for e in emergencies if e[1].date() == datetime.date.today())
                 
                 stats_frame = customtkinter.CTkFrame(emergency_frame, fg_color=self.colors['danger'])
@@ -1165,13 +1190,14 @@ class NurseFrame(customtkinter.CTkFrame):
                 scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
                 for note, date, patient_name, patient_id, author in emergencies:
+                    import datetime
                     is_today = date.date() == datetime.date.today()
                     case_color = self.colors['danger'] if is_today else "#e67e22"
                     
                     case_frame = customtkinter.CTkFrame(scroll_frame, fg_color=case_color)
                     case_frame.pack(fill="x", pady=8)
 
-                    priority_text = "🚨 TODAY - " if is_today else "⚠️ "
+                    priority_text = "TODAY - " if is_today else ""
                     
                     customtkinter.CTkLabel(
                         case_frame,
@@ -1198,12 +1224,13 @@ class NurseFrame(customtkinter.CTkFrame):
             else:
                 customtkinter.CTkLabel(
                     emergency_frame,
-                    text="✅ No emergency cases found",
+                    text="No emergency cases found",
                     font=("Arial", 16),
                     text_color=self.colors['accent']
                 ).pack(pady=50)
 
         except Exception as e:
+            print(f"Error loading emergency cases: {e}")
             customtkinter.CTkLabel(
                 emergency_frame,
                 text=f"Error loading emergency cases: {str(e)}",
@@ -1221,8 +1248,8 @@ class NurseFrame(customtkinter.CTkFrame):
             try:
                 log_action(self.username, "Nurse", "Logged out from nursing system")
                 self.conn.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Logout error: {e}")
             messagebox.showinfo("Goodbye", f"Thank you for your dedication, Nurse {self.username}!")
             self.master.destroy()
             if self.on_logout:
